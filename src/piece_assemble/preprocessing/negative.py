@@ -1,13 +1,12 @@
-import numpy as np
-from piece_assemble.preprocessing.base import PieceExtractorBase
-from piece_assemble.preprocessing import np_to_pil, pil_to_np
-
 from typing import TYPE_CHECKING
-from skimage.filters import threshold_otsu, median
+
+import numpy as np
+from PIL import Image
+from skimage.filters import median, threshold_otsu
 from skimage.measure import label, regionprops
 
-from PIL import Image
-
+from piece_assemble.preprocessing import np_to_pil, pil_to_np
+from piece_assemble.preprocessing.base import PieceExtractorBase
 
 if TYPE_CHECKING:
     from PIL.Image import Image

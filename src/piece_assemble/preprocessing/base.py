@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from PIL.Image import Image
 import numpy as np
-
+from PIL.Image import Image
 
 if TYPE_CHECKING:
-    from PIL.Image import Image
     import numpy as np
+    from PIL.Image import Image
 
 
 class PieceExtractorBase(ABC):
