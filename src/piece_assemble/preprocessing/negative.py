@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 
 class NegativePieceExtractor(PieceExtractorBase):
+    def __init__(self, background_var: float = 1.5) -> None:
+        super().__init__()
+
+        self.background_var = background_var
+
     def __call__(self, img: Image) -> tuple[Image, np.ndarray]:
         img_gray = img.convert("L")
         img_np = pil_to_np(img_gray)
@@ -26,9 +31,7 @@ class NegativePieceExtractor(PieceExtractorBase):
 
         return np_to_pil(img_piece), piece_mask
 
-    def binarize(
-        self, img: np.ndarray[int], bg_relative_var: float = 1.1
-    ) -> np.ndarray[bool]:
+    def binarize(self, img: np.ndarray[int]) -> np.ndarray[bool]:
         # This method is designed for images with single colored background
         img_median = median(img, footprint=np.ones((11, 11)))
 
@@ -39,7 +42,7 @@ class NegativePieceExtractor(PieceExtractorBase):
         background_median = np.median(background_values)
 
         std = np.std(background_values)
-        tol = bg_relative_var * std
+        tol = self.background_var * std
 
         return (img_median < background_median - tol) | (
             img_median > background_median + tol
