@@ -9,18 +9,14 @@ python src/piece_assemble/tools/preprocess.py \
 
 import argparse
 from os import path
-from typing import TYPE_CHECKING
 
 import numpy as np
 from PIL import Image
+from PIL.Image import Image as PilImage
 from tqdm import tqdm
 
-from piece_assemble.preprocessing import np_to_pil
-from piece_assemble.preprocessing.base import PieceExtractorBase
-from piece_assemble.preprocessing.negative import NegativePieceExtractor
-
-if TYPE_CHECKING:
-    from PIL.Image import Image as PilImage
+from piece_assemble.preprocessing import NegativePieceExtractor, PieceExtractorBase
+from piece_assemble.preprocessing.common import np_to_pil
 
 
 def store_piece_image(img: PilImage, output_dir: str, basename: str) -> None:
@@ -90,9 +86,16 @@ if __name__ == "__main__":
 
     parser.add_argument("inputs", nargs="+")
     parser.add_argument("output_dir")
+    parser.add_argument("--preserve-holes", action="store_true")
+    parser.add_argument("--background-var", type=float, default=1.5)
+    parser.add_argument("--max-size", type=int, default=3000)
 
     args = parser.parse_args()
-    piece_extractor = NegativePieceExtractor()
+    piece_extractor = NegativePieceExtractor(
+        args.background_var,
+        fill_holes=not args.preserve_holes,
+        max_image_size=args.max_size,
+    )
 
     for img_path in tqdm(args.inputs):
         process_image(img_path, args.output_dir, piece_extractor)
