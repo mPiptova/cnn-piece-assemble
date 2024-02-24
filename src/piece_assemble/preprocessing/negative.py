@@ -72,15 +72,20 @@ class NegativePieceExtractor(PieceExtractorBase):
         piece_mask = img_mask[bbox[0] : bbox[2], bbox[1] : bbox[3]]
 
         if scale != 1:
-            print(new_shape)
             img_piece = rescale(img_piece, 1 / scale, channel_axis=2)
             piece_mask = rescale(piece_mask.astype(bool), 1 / scale)
 
         return np_to_pil(img_piece), piece_mask
 
+    def _get_median_footprint(self, shape: tuple[int, int]) -> tuple[int, int]:
+        """Return the footprint of the median filter based on the image shape"""
+        kernel_size = (np.max(shape) // 400) * 2 + 1
+        kernel_size = np.clip(kernel_size, 3, 15)
+        return np.ones((kernel_size, kernel_size))
+
     def binarize(self, img: np.ndarray[int]) -> np.ndarray[bool]:
         # This method is designed for images with single colored background
-        img_median = median(img, footprint=np.ones((11, 11)))
+        img_median = median(img, footprint=self._get_median_footprint(img.shape))
 
         # First rough binarization
         thr = threshold_otsu(img_median)
