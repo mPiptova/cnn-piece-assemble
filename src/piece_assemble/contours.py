@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
+from scipy.signal import argrelextrema
 
 from piece_assemble.types import BinImg, Points
 
@@ -63,3 +64,87 @@ def smooth_contours(contours: Points, sigma: float) -> Points:
         ],
         axis=1,
     )
+
+
+def diff(f: np.ndarray) -> np.ndarray:
+    """Approximate first derivative of function `f`.
+
+
+    Parameters
+    ----------
+    f
+        Cyclic array of function values.
+
+    Returns
+    -------
+    df
+    """
+    return np.roll(f, -1) - f
+
+
+def changes_sign(f: np.ndarray) -> np.ndarray[int]:
+    """Find indexes where the sign of given function changes.
+
+    Parameters
+    ----------
+    f
+        Cyclic array of function values.
+
+    Returns
+    -------
+    indexes
+        Indexes where the sign changes.
+    """
+    sign = np.where(f == 0, 0, f // np.abs(f))
+    return np.where((diff(sign) != 0) | (sign == 0))[0]
+
+
+def find_inflection_points(contour: Points) -> np.ndarray[int]:
+    """Find indexes of inflection points in given contour points.
+
+    Parameters
+    ----------
+    contour
+        2d array of points representing a shape contour.
+
+    Returns
+    -------
+    indexes
+        Array of indexes of inflection points.
+    """
+    dx1 = diff(contour[:, 0])
+    dy1 = diff(contour[:, 1])
+
+    dx2 = diff(dx1)
+    dy2 = diff(dy1)
+
+    return changes_sign(dx1 * dy2 + dy1 * dx2)
+
+
+def find_curvature_extrema(contour: Points) -> np.ndarray[int]:
+    """Find indexes of contour where the curvature extrema are reached.
+
+    Parameters
+    ----------
+    contour
+        2d array of points representing a shape contour.
+
+    Returns
+    -------
+    indexes
+        Array of indexes of points where the curvature extrema are reached.
+    """
+    dx1 = diff(contour[:, 0])
+    dy1 = diff(contour[:, 1])
+
+    dx2 = diff(dx1)
+    dy2 = diff(dy1)
+
+    K_numerator = dx1 * dy2 + dy1 * dx2
+    K_denominator = np.power(dx1 * dx1 + dy1 * dy1, 3 / 2)
+
+    K = K_numerator / K_denominator
+
+    K_minima_idxs = argrelextrema(K, np.less)[0]
+    K_maxima_idxs = argrelextrema(K, np.greater)[0]
+    return np.sort(np.concatenate((K_minima_idxs, K_maxima_idxs)))
