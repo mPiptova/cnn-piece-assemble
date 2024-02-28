@@ -3,6 +3,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import argrelextrema
 
+from piece_assemble.geometry import point_to_line_dist
 from piece_assemble.types import BinImg, Points
 
 
@@ -148,3 +149,96 @@ def find_curvature_extrema(contour: Points) -> np.ndarray[int]:
     K_minima_idxs = argrelextrema(K, np.less)[0]
     K_maxima_idxs = argrelextrema(K, np.greater)[0]
     return np.sort(np.concatenate((K_minima_idxs, K_maxima_idxs)))
+
+
+def split_interest_points(
+    interest_point_idxs: np.ndarray[int], contour: Points, thr: float
+) -> np.ndarray[int]:
+    """Add new interest points if current interest points are not dense enough.
+
+    Interest points divide the contour into a set of open curve segments. For two
+    consecutive interest points `contour[i]` and `contour[j]`, this segment is given
+    by points `contour[i+1:j]`. From these points, let `contour[k]` be the most distant
+    point from the line given by points `contour[i]` and `contour[j]`.
+    If this distance is above the selected threshold, `contour[k]` is added as a new
+    interest point.
+
+    Parameters
+    ----------
+    interest_point_idxs
+        An array of indexes of interest points within the `all_points` array.
+    contour
+        2d array of all points representing a shape contour.
+    thr
+        A distance threshold used to determine if the segment between two consecutive
+        interest points needs to be divided in two.
+
+    Returns
+    -------
+    New array of interest points indexes.
+    """
+    new_idxs = []
+    for start, end in zip(interest_point_idxs, np.roll(interest_point_idxs, -1)):
+        inner_idx = (
+            np.arange(start + 1, end)
+            if start < end
+            else np.arange(start + 1, len(contour) + end) % len(contour)
+        )
+
+        if len(inner_idx) == 0:
+            continue
+
+        dists = np.abs(
+            point_to_line_dist(contour[inner_idx], (contour[start], contour[end]))
+        )
+        max_idx = dists.argmax()
+        if dists[max_idx] > thr:
+            new_idxs.append(inner_idx[max_idx])
+
+    return np.sort(np.concatenate([interest_point_idxs, np.array(new_idxs)])).astype(
+        int
+    )
+
+
+def merge_interest_points(interest_point_idxs, all_points, thr, allow_self_crossing):
+    """Remove interest points if current interest points are too dense.
+
+
+    Parameters
+    ----------
+    interest_point_idxs
+        An array of indexes of interest points within the `all_points` array.
+    contour
+        2d array of all points representing a shape contour.
+    thr
+        A distance threshold used to determine if the segment between two consecutive
+        interest points needs to be merged.
+
+    Returns
+    -------
+    New array of interest points indexes.
+    """
+    idxs_to_remove = []
+    start = interest_point_idxs[0]
+    for middle, end in zip(
+        np.roll(interest_point_idxs, -1), np.roll(interest_point_idxs, -2)
+    ):
+        inner_idx = (
+            np.arange(start + 1, end)
+            if start < end
+            else np.arange(start + 1, len(all_points) + end) % len(all_points)
+        )
+
+        dists = point_to_line_dist(
+            all_points[inner_idx], all_points[start], all_points[end]
+        )
+        abs_dists = np.abs(dists)
+        max_idx = abs_dists.argmax()
+        if abs_dists[max_idx] < thr and (
+            allow_self_crossing or np.abs(dists.sum()) == abs_dists.sum()
+        ):
+            idxs_to_remove.append(middle)
+        else:
+            start = middle
+
+    return np.setdiff1d(interest_point_idxs, np.array(idxs_to_remove))
