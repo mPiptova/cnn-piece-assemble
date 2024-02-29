@@ -96,7 +96,7 @@ def changes_sign(f: np.ndarray) -> np.ndarray[int]:
     indexes
         Indexes where the sign changes.
     """
-    sign = np.where(f == 0, 0, f // np.abs(f))
+    sign = np.where(f == 0, 1, f // np.abs(f))
     return np.where((diff(sign) != 0) | (sign == 0))[0]
 
 
@@ -122,6 +122,31 @@ def find_inflection_points(contour: Points) -> np.ndarray[int]:
     return changes_sign(dx1 * dy2 + dy1 * dx2)
 
 
+def compute_curvature(contour: Points) -> np.ndarray[float]:
+    """Return the curvature of given function.
+
+    Parameters
+    ----------
+    contour
+        2d array of points representing a closed shape contour.
+
+    Returns
+    -------
+    curvature
+        2d array of contour curvature in given points.
+    """
+    dx1 = diff(contour[:, 0])
+    dy1 = diff(contour[:, 1])
+
+    dx2 = diff(dx1)
+    dy2 = diff(dy1)
+
+    K_numerator = dx1 * dy2 + dy1 * dx2
+    K_denominator = np.power(dx1 * dx1 + dy1 * dy1, 3 / 2)
+
+    return K_numerator / K_denominator
+
+
 def find_curvature_extrema(contour: Points) -> np.ndarray[int]:
     """Find indexes of contour where the curvature extrema are reached.
 
@@ -135,16 +160,7 @@ def find_curvature_extrema(contour: Points) -> np.ndarray[int]:
     indexes
         Array of indexes of points where the curvature extrema are reached.
     """
-    dx1 = diff(contour[:, 0])
-    dy1 = diff(contour[:, 1])
-
-    dx2 = diff(dx1)
-    dy2 = diff(dy1)
-
-    K_numerator = dx1 * dy2 + dy1 * dx2
-    K_denominator = np.power(dx1 * dx1 + dy1 * dy1, 3 / 2)
-
-    K = K_numerator / K_denominator
+    K = compute_curvature(contour)
 
     K_minima_idxs = argrelextrema(K, np.less)[0]
     K_maxima_idxs = argrelextrema(K, np.greater)[0]
@@ -200,7 +216,9 @@ def split_interest_points(
     )
 
 
-def merge_interest_points(interest_point_idxs, all_points, thr, allow_self_crossing):
+def merge_interest_points(
+    interest_point_idxs, all_points, thr, allow_self_crossing=False
+):
     """Remove interest points if current interest points are too dense.
 
 
@@ -230,7 +248,7 @@ def merge_interest_points(interest_point_idxs, all_points, thr, allow_self_cross
         )
 
         dists = point_to_line_dist(
-            all_points[inner_idx], all_points[start], all_points[end]
+            all_points[inner_idx], (all_points[start], all_points[end])
         )
         abs_dists = np.abs(dists)
         max_idx = abs_dists.argmax()
