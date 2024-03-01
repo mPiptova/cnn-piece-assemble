@@ -141,7 +141,7 @@ def compute_curvature(contour: Points) -> np.ndarray[float]:
     dx2 = diff(dx1)
     dy2 = diff(dy1)
 
-    K_numerator = dx1 * dy2 + dy1 * dx2
+    K_numerator = dx1 * dy2 - dy1 * dx2
     K_denominator = np.power(dx1 * dx1 + dy1 * dy1, 3 / 2)
 
     return K_numerator / K_denominator
