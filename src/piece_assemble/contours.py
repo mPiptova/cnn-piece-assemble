@@ -147,6 +147,34 @@ def compute_curvature(contour: Points) -> np.ndarray[float]:
     return K_numerator / K_denominator
 
 
+def get_osculating_circles(contours: Points) -> tuple[np.ndarray[float], Points]:
+    """Find radius and center of osculating circle at any given point of curve.
+
+    Parameters
+    ----------
+    contours
+        2d array of points representing a closed shape contour.
+
+    Returns
+    -------
+    radii
+        1d array of circle radii.
+    centers
+        2d array of center points.
+    """
+    curvature = compute_curvature(contours)
+    dx = diff(contours[:, 0])
+    dy = diff(contours[:, 1])
+
+    normals = np.vstack([-dy, dx]).T
+    normals = normals / np.expand_dims(np.linalg.norm(normals, axis=1), 1)
+
+    radii = 1 / curvature
+    centers = contours + np.expand_dims(radii, 1) * normals
+
+    return radii, centers
+
+
 def find_curvature_extrema(contour: Points) -> np.ndarray[int]:
     """Find indexes of contour where the curvature extrema are reached.
 
