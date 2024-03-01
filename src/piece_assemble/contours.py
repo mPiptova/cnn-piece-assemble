@@ -3,8 +3,14 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import argrelextrema
 
-from piece_assemble.geometry import point_to_line_dist
-from piece_assemble.types import BinImg, Points
+from piece_assemble.geometry import (
+    extend_interval,
+    interval_difference,
+    normalize_interval,
+    point_to_line_dist,
+    points_dist,
+)
+from piece_assemble.types import BinImg, Interval, Points
 
 
 def extract_contours(img_bin: BinImg) -> tuple[Points, list[Points]]:
@@ -147,34 +153,6 @@ def compute_curvature(contour: Points) -> np.ndarray[float]:
     return K_numerator / K_denominator
 
 
-def get_osculating_circles(contours: Points) -> tuple[np.ndarray[float], Points]:
-    """Find radius and center of osculating circle at any given point of curve.
-
-    Parameters
-    ----------
-    contours
-        2d array of points representing a closed shape contour.
-
-    Returns
-    -------
-    radii
-        1d array of circle radii.
-    centers
-        2d array of center points.
-    """
-    curvature = compute_curvature(contours)
-    dx = diff(contours[:, 0])
-    dy = diff(contours[:, 1])
-
-    normals = np.vstack([-dy, dx]).T
-    normals = normals / np.expand_dims(np.linalg.norm(normals, axis=1), 1)
-
-    radii = 1 / curvature
-    centers = contours + np.expand_dims(radii, 1) * normals
-
-    return radii, centers
-
-
 def find_curvature_extrema(contour: Points) -> np.ndarray[int]:
     """Find indexes of contour where the curvature extrema are reached.
 
@@ -288,3 +266,133 @@ def merge_interest_points(
             start = middle
 
     return np.setdiff1d(interest_point_idxs, np.array(idxs_to_remove))
+
+
+def get_osculating_circles(contours: Points) -> tuple[np.ndarray[float], Points]:
+    """Find radius and center of osculating circle at any given point of curve.
+
+    Parameters
+    ----------
+    contours
+        2d array of points representing a closed shape contour.
+
+    Returns
+    -------
+    radii
+        1d array of circle radii.
+    centers
+        2d array of center points.
+    """
+    curvature = compute_curvature(contours)
+    dx = diff(contours[:, 0])
+    dy = diff(contours[:, 1])
+
+    normals = np.vstack([-dy, dx]).T
+    normals = normals / np.expand_dims(np.linalg.norm(normals, axis=1), 1)
+
+    radii = 1 / curvature
+    centers = contours + np.expand_dims(radii, 1) * normals
+
+    return radii, centers
+
+
+def get_validity_intervals(
+    contour: Points, radii: np.ndarray[float], centers: Points, tol_dist: float
+) -> list[tuple[int, int]]:
+    """Return the validity intervals for each osculating circle.
+
+    Parameters
+    ----------
+    contour
+        2d array of all points representing a shape contour.
+    radii
+        1d array of osculating circle radii.
+    centers
+        2d array of osculating circle center points.
+    tol_dist
+        Distance tolerance. If the distance of the contour point and the osculating
+        circle is smaller than this number, the point is in the validity interval of
+        this circle.
+
+    Returns
+    -------
+    validity_interval
+        A list of (normalized) validity intervals for each osculating circle.
+    """
+    dists = points_dist(contour, centers)
+    dists_from_circle = np.abs(dists - np.abs(radii))
+    valid = (dists_from_circle < tol_dist).astype(int)
+    valid_changes = np.roll(valid, -1, axis=0) - valid
+
+    starts_x, starts_y = np.where(valid_changes == 1)
+    starts_y = np.tile(starts_y, 2)
+    starts_x = np.concatenate((-(contour.shape[0] - starts_x), starts_x))
+
+    ends_x, ends_y = np.where(valid_changes == -1)
+    ends_y = np.tile(ends_y, 2)
+    ends_x = np.concatenate((ends_x, contour.shape[0] + ends_x))
+
+    validity_intervals = [
+        normalize_interval(
+            np.max(starts_x[(starts_y == i) & (starts_x <= i)]),
+            np.min(ends_x[(ends_y == i) & (ends_x > i)]),
+        )
+        if not np.isinf(radii[i])
+        else (i, i + 1)
+        for i in range(contour.shape[0])
+    ]
+
+    return validity_intervals
+
+
+def approximate_curve_by_circles(
+    contour: Points, radii: np.ndarray[float], centers: Points, tol_dist: float
+) -> list[tuple[int, Interval]]:
+    """Obtain the curve approximation by osculating circle arcs.
+
+    Parameters
+    ----------
+    contour
+        2d array of all points representing a shape contour.
+    radii
+        1d array of osculating circle radii.
+    centers
+        2d array of osculating circle center points.
+    tol_dist
+        Distance tolerance. If the distance of the contour point and the osculating
+        circle is smaller than this number, the point is in the validity interval of
+        this circle.
+
+    Returns
+    -------
+    circles
+        I list of circle arc representations. Each element is a tuple
+        `(i, validity_interval)`, where `i` is the index of osculating circle and
+        `validity_interval` is a range of indexes where the given contour is well
+        approximated by this circle.
+    """
+    validity_intervals = get_validity_intervals(contour, radii, centers, tol_dist)
+    validity_intervals_extended = [
+        extend_interval(interval) for interval in validity_intervals
+    ]
+
+    # In each iteration, find the osculating circle with the largest validity interval.
+    # Then, update all other intervals and repeat.
+    circles = []
+    while True:
+        valid_lengths = [end - start for start, end in validity_intervals_extended]
+        max_i = np.argmax(valid_lengths)
+        length = valid_lengths[max_i]
+        if length == 0:
+            break
+        validity_interval = validity_intervals[max_i]
+        circles.append((max_i, validity_interval))
+        validity_intervals = [
+            interval_difference(r, validity_intervals[max_i], contour.shape[0])
+            for r in validity_intervals
+        ]
+        validity_intervals_extended = [
+            extend_interval(r, contour.shape[0]) for r in validity_intervals
+        ]
+
+    return circles
