@@ -334,8 +334,11 @@ def get_validity_intervals(
 
     validity_intervals = [
         normalize_interval(
-            np.max(starts_x[(starts_y == i) & (starts_x <= i)]),
-            np.min(ends_x[(ends_y == i) & (ends_x > i)]),
+            (
+                np.max(starts_x[(starts_y == i) & (starts_x <= i)]),
+                np.min(ends_x[(ends_y == i) & (ends_x > i)]),
+            ),
+            contour.shape[0],
         )
         if not np.isinf(radii[i])
         else (i, i + 1)
@@ -372,8 +375,9 @@ def approximate_curve_by_circles(
         approximated by this circle.
     """
     validity_intervals = get_validity_intervals(contour, radii, centers, tol_dist)
+    cycle_length = contour.shape[0]
     validity_intervals_extended = [
-        extend_interval(interval) for interval in validity_intervals
+        extend_interval(interval, cycle_length) for interval in validity_intervals
     ]
 
     # In each iteration, find the osculating circle with the largest validity interval.
@@ -388,11 +392,11 @@ def approximate_curve_by_circles(
         validity_interval = validity_intervals[max_i]
         circles.append((max_i, validity_interval))
         validity_intervals = [
-            interval_difference(r, validity_intervals[max_i], contour.shape[0])
+            interval_difference(r, validity_intervals[max_i], cycle_length)
             for r in validity_intervals
         ]
         validity_intervals_extended = [
-            extend_interval(r, contour.shape[0]) for r in validity_intervals
+            extend_interval(r, cycle_length) for r in validity_intervals
         ]
 
     return circles
