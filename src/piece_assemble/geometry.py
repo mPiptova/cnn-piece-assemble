@@ -69,7 +69,9 @@ def normalize_interval(interval: Interval, cycle_length: int) -> Interval:
     return interval[0] % cycle_length, interval[1] % cycle_length
 
 
-def extend_interval(interval: Interval, cycle_length: int) -> Interval:
+def extend_interval(
+    interval: Interval, cycle_length: int, keep_bound: int = 0
+) -> Interval:
     """Extend the interval in the cyclic domain.
 
     This function converts intervals such as (9, 2) to (9, 12), given that
@@ -89,12 +91,41 @@ def extend_interval(interval: Interval, cycle_length: int) -> Interval:
         An interval where on of the numbers might be < 0 or >= `cycle_lengths`, but the
         first bound is always smaller than the second one.
     """
-    if interval[1] < interval[0]:
+    if interval[0] <= interval[1]:
+        return interval
+    if keep_bound == 0:
         return (interval[0], interval[1] + cycle_length)
-    return interval
+    return (interval[0] - cycle_length, interval[1])
 
 
-def interval_difference(interval1, interval2, cycle_length):
+def is_in_cyclic_interval(num: float, interval: Interval, cycle_length: int) -> bool:
+    """Determine whether the given number is in the cyclic interval.
+
+    Parameters
+    ----------
+    num
+    interval
+        Pair of numbers representing a range.
+    cycle_length
+        Total length of the cycle domain where the interval lie.
+
+    Returns
+    -------
+    bool
+    """
+    if num < 0 or num >= cycle_length:
+        num = num % cycle_length
+
+    interval = normalize_interval(interval, cycle_length)
+
+    if interval[0] < interval[1]:
+        return interval[0] <= num <= interval[1]
+    return num >= interval[0] or num <= interval[1]
+
+
+def interval_difference(
+    interval1: Interval, interval2: Interval, cycle_length: int
+) -> Interval:
     """Crop the first interval so it doesn't intersect the second one.
 
     Parameters
@@ -112,20 +143,28 @@ def interval_difference(interval1, interval2, cycle_length):
     cropped_interval
         A set difference of given intervals.
     """
+    if interval1[0] == interval1[1]:
+        return interval1
 
-    interval1 = extend_interval(interval1, cycle_length)
-    interval2 = extend_interval(interval2, cycle_length)
+    if interval1 == interval2:
+        return interval1[0], interval1[0]
 
-    cropped_range = (0, 0)
-    if interval2[1] <= interval1[0] or interval1[1] <= interval2[0]:
-        # they do not overlap
-        cropped_range = interval1
-    elif interval2[0] <= interval1[0] and interval2[1] >= interval1[1]:
-        # interval1 is contained in interval2
-        cropped_range = (interval1[0], interval1[0])
-    elif interval1[0] < interval2[0]:
-        cropped_range = interval1[0], interval2[0]
-    else:
-        cropped_range = (interval2[1], interval1[1])
+    if is_in_cyclic_interval(
+        interval2[0], interval1, cycle_length
+    ) and is_in_cyclic_interval(interval2[1], interval1, cycle_length):
+        # complicated case, not supported
+        print(interval1, interval2)
+        raise ValueError("Not supported")
 
-    return normalize_interval(cropped_range, cycle_length)
+    if is_in_cyclic_interval(interval2[0], interval1, cycle_length):
+        return (interval1[0], interval2[0])
+
+    if is_in_cyclic_interval(interval2[1], interval1, cycle_length):
+        return (interval2[1], interval1[1])
+
+    if is_in_cyclic_interval(
+        interval1[0], interval2, cycle_length
+    ) and is_in_cyclic_interval(interval1[1], interval2, cycle_length):
+        return (interval1[0], interval1[0])
+
+    return interval1
