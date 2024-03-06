@@ -387,7 +387,7 @@ def approximate_curve_by_circles(
         valid_lengths = [end - start for start, end in validity_intervals_extended]
         max_i = np.argmax(valid_lengths)
         length = valid_lengths[max_i]
-        if length == 0:
+        if length <= 1:
             break
         validity_interval = validity_intervals[max_i]
         circles.append((max_i, validity_interval))
