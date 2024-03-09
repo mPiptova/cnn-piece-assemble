@@ -3,14 +3,8 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import argrelextrema
 
-from piece_assemble.geometry import (
-    extend_interval,
-    interval_difference,
-    normalize_interval,
-    point_to_line_dist,
-    points_dist,
-)
-from piece_assemble.types import BinImg, Interval, Points
+from piece_assemble.geometry import normalize_interval, point_to_line_dist, points_dist
+from piece_assemble.types import BinImg, Points
 
 
 def extract_contours(img_bin: BinImg) -> tuple[Points, list[Points]]:
@@ -346,68 +340,3 @@ def get_validity_intervals(
     ]
 
     return validity_intervals
-
-
-def approximate_curve_by_circles(
-    contour: Points, radii: np.ndarray[float], centers: Points, tol_dist: float
-) -> list[tuple[int, Interval]]:
-    """Obtain the curve approximation by osculating circle arcs.
-
-    Parameters
-    ----------
-    contour
-        2d array of all points representing a shape contour.
-    radii
-        1d array of osculating circle radii.
-    centers
-        2d array of osculating circle center points.
-    tol_dist
-        Distance tolerance. If the distance of the contour point and the osculating
-        circle is smaller than this number, the point is in the validity interval of
-        this circle.
-
-    Returns
-    -------
-    circles
-        I list of circle arc representations. Each element is a tuple
-        `(i, validity_interval)`, where `i` is the index of osculating circle and
-        `validity_interval` is a range of indexes where the given contour is well
-        approximated by this circle.
-    """
-    validity_intervals = get_validity_intervals(contour, radii, centers, tol_dist)
-    validity_intervals = [
-        (i, interval) for i, interval in enumerate(validity_intervals)
-    ]
-    cycle_length = contour.shape[0]
-    validity_intervals_extended = [
-        (i, extend_interval(interval, cycle_length))
-        for i, interval in validity_intervals
-    ]
-
-    # In each iteration, find the osculating circle with the largest validity interval.
-    # Then, update all other intervals and repeat.
-    circles = []
-    while True:
-        valid_lengths = [end - start for _, (start, end) in validity_intervals_extended]
-        max_i = np.argmax(valid_lengths)
-        length = valid_lengths[max_i]
-        if length <= 1:
-            break
-        i, validity_interval = validity_intervals[max_i]
-        circles.append((i, validity_interval))
-        validity_intervals = [
-            (i, (interval_difference(r, validity_interval, cycle_length)))
-            for i, r in validity_intervals
-        ]
-        # remove intervals of length 0:
-        validity_intervals = [
-            (i, interval)
-            for i, interval in validity_intervals
-            if interval[0] != interval[1]
-        ]
-
-        validity_intervals_extended = [
-            (i, extend_interval(r, cycle_length)) for i, r in validity_intervals
-        ]
-
-    return circles
