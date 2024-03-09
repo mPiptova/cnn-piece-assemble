@@ -6,8 +6,9 @@ from skimage.filters import median, threshold_otsu
 from skimage.measure import label, regionprops
 from skimage.transform import rescale
 
+from piece_assemble.image import np_to_pil, pil_to_np
 from piece_assemble.preprocessing.base import PieceExtractorBase
-from piece_assemble.preprocessing.common import get_resize_shape, np_to_pil, pil_to_np
+from piece_assemble.preprocessing.common import get_resize_shape
 
 if TYPE_CHECKING:
     from PIL.Image import Image

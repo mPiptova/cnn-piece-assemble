@@ -15,8 +15,8 @@ from PIL import Image
 from PIL.Image import Image as PilImage
 from tqdm import tqdm
 
+from piece_assemble.image import np_to_pil
 from piece_assemble.preprocessing import NegativePieceExtractor, PieceExtractorBase
-from piece_assemble.preprocessing.common import np_to_pil
 
 
 def store_piece_image(img: PilImage, output_dir: str, basename: str) -> None:
