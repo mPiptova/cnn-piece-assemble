@@ -313,6 +313,8 @@ def get_validity_intervals(
     validity_interval
         A list of (normalized) validity intervals for each osculating circle.
     """
+    if len(contour) == 0:
+        return []
     dists = points_dist(contour, centers)
     dists_from_circle = np.abs(dists - np.abs(radii))
     valid = (dists_from_circle < tol_dist).astype(int)
