@@ -3,6 +3,7 @@ from PIL import ImageDraw
 from PIL.Image import Image as PilImage
 
 from piece_assemble.image import np_to_pil
+from piece_assemble.osculating_circle_descriptor import ApproximatingArc
 from piece_assemble.types import NpImage, Point, Points
 
 
@@ -72,9 +73,7 @@ def draw_circle_arc(
 
 def draw_circle_approximation(
     contour: Points,
-    circle_arcs: list[int, tuple[int, int]],
-    centers: list[int],
-    radii: list[int],
+    circle_arcs: list[ApproximatingArc],
 ) -> PilImage:
     """Draw a curve approximated by circle arcs.
 
@@ -102,18 +101,23 @@ def draw_circle_approximation(
     img = np_to_pil(img)
     draw = ImageDraw.Draw(img)
 
-    for i, interval in circle_arcs:
-        center = centers[i]
-        radius = np.abs(radii[i])
-        point_start, point_end = contour[interval[0]], contour[interval[1]]
+    for arc in circle_arcs:
+        # center = centers[i]
+        # radius = np.abs(radii[i])
+        point_start, point_end = (
+            contour[arc.validity_interval[0]],
+            contour[arc.validity_interval[1]],
+        )
 
-        alpha_start = np.rad2deg(np.arctan2(*(point_start - center))) % 360
-        alpha_end = np.rad2deg(np.arctan2(*(point_end - center))) % 360
+        alpha_start = np.rad2deg(np.arctan2(*(point_start - arc.center))) % 360
+        alpha_end = np.rad2deg(np.arctan2(*(point_end - arc.center))) % 360
 
-        if radii[i] > 0:
-            arc = (alpha_end, alpha_start)
+        if arc.radius > 0:
+            angle_range = (alpha_end, alpha_start)
         else:
-            arc = (alpha_start, alpha_end)
+            angle_range = (alpha_start, alpha_end)
 
-        draw_circle_arc(radius, center, draw, color=100, angle_range=arc)
+        draw_circle_arc(
+            np.abs(arc.radius), arc.center, draw, color=100, angle_range=angle_range
+        )
     return img
