@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial import KDTree
 
 from piece_assemble.types import Interval, Point, Points
 
@@ -208,3 +209,82 @@ def fit_transform(points1: Points, points2: Points) -> tuple[np.ndarray, Point]:
     translation = np.mean(points2, axis=0) - np.mean(points1_t, axis=0)
 
     return rot_matrix, translation
+
+
+def icp(
+    points1: Points, points2: Points, init_rotation: np.ndarray, init_translation: Point
+) -> tuple[np.ndarray, Point, float]:
+    """Find transformation between two sets of points using Iterative Closest Point
+    algorithm
+
+    Finds rotation and translation which maps `points1` to `points2`. This function
+    expects the two cloud of points to already be reasonably close to each other.
+
+    Parameters
+    ----------
+    points1
+        The first point cloud. 2d array of points.
+    points2
+        The second point cloud. 2d array of points.
+    init_rotation
+        Initial rotation to be applied to `points1`
+    init_translation
+        Initial translation to be applied to `points1`
+
+    Returns
+    -------
+    rotation, translation
+        Transformation which maps `points1` to `points2`
+    length
+        Size of the correspondence between the two point clouds after the
+        transformation.
+    """
+    tree = KDTree(points2)
+    points_transformed = points1 @ init_rotation + init_translation
+
+    total_rotation = init_rotation
+    while True:
+        rotation, translation = icp_iteration(points_transformed, tree)
+        total_rotation = total_rotation @ rotation
+        contours_new = points_transformed @ rotation + translation
+        if np.linalg.norm(contours_new - points_transformed, axis=1).max() < 1:
+            break
+        points_transformed = contours_new
+
+    total_translation = np.mean(points_transformed, axis=0) - np.mean(
+        points1 @ total_rotation, axis=0
+    )
+    length = (tree.query(points_transformed, k=1)[0] < 5).sum()
+
+    return total_rotation, total_translation, length
+
+
+def icp_iteration(points1: Points, points2_tree: KDTree) -> tuple[np.ndarray, Point]:
+    """Do one iteration of the Iterative Closest Point algorithm.
+
+    Parameters
+    ----------
+    points1
+        The first point cloud. 2d array of points.
+    points2_tree
+        KDTree of points from the second point cloud.
+
+    Returns
+    -------
+    rotation, translation
+    """
+    nearest_dist, nearest_ind = points2_tree.query(points1, k=1)
+    near_idx = nearest_dist < 20
+
+    if near_idx.sum() == 0:
+        # objects are too far from each other, no transformation can be found
+        return np.array([[1, 0], [0, 1]]), np.array([0, 0])
+    points1_near = points1[near_idx]
+    points2_near = points2_tree.data[nearest_ind][near_idx]
+
+    rotation, translation = fit_transform(points1_near, points2_near)
+    return rotation, translation
+
+
+def get_rotation_matrix(angle: float) -> np.ndarray:
+    return np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
