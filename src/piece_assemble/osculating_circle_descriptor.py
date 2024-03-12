@@ -69,16 +69,21 @@ class OsculatingCircleDescriptor:
         radii, centers = get_osculating_circles(contour)
         arcs = approximate_curve_by_circles(contour, radii, centers, tol_dist)
 
-        def get_segment(interval):
-            interval = extend_interval(interval, len(contour))
-            idxs = np.arange(interval[0], interval[1]) % len(contour)
-            return contour[idxs]
-
         descriptor = np.array(
-            [cls.segment_descriptor(get_segment(arc.validity_interval)) for arc in arcs]
+            [
+                cls.segment_descriptor(cls.get_segment(arc.validity_interval))
+                for arc in arcs
+            ]
         )
 
         return cls(name, contour, arcs, descriptor)
+
+    @classmethod
+    def get_segment(cls, contour: Points, interval: Interval) -> Points:
+        """Get part of the curve that belongs to the given interval."""
+        interval = extend_interval(interval, len(contour))
+        idxs = np.arange(interval[0], interval[1]) % len(contour)
+        return contour[idxs]
 
     @classmethod
     def segment_descriptor(cls, segment: Points) -> np.ndarray[float]:
