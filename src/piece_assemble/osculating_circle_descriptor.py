@@ -31,10 +31,12 @@ class ApproximatingArc:
 class OsculatingCircleDescriptor:
     def __init__(
         self,
+        name: str,
         contour: Points,
         arcs: list[ApproximatingArc],
         descriptor: np.ndarray[float],
     ) -> None:
+        self.name = name
         self._contour = contour
         self._arcs = arcs
         self.descriptor = descriptor
@@ -42,7 +44,7 @@ class OsculatingCircleDescriptor:
 
     @classmethod
     def from_contours(
-        cls, contour: Points, sigma: int = 5, tol_dist: float = 2.5
+        cls, contour: Points, name: str, sigma: int = 5, tol_dist: float = 2.5
     ) -> OsculatingCircleDescriptor:
         """Extract descriptor from given shape contour.
 
@@ -50,6 +52,8 @@ class OsculatingCircleDescriptor:
         ----------
         contour
             2d array of points representing a shape contour.
+        name
+            ID of this shape.
         sigma
             Smoothing strength.
         tol_dist
@@ -74,7 +78,7 @@ class OsculatingCircleDescriptor:
             [cls.segment_descriptor(get_segment(arc.validity_interval)) for arc in arcs]
         )
 
-        return cls(contour, arcs, descriptor)
+        return cls(name, contour, arcs, descriptor)
 
     @classmethod
     def segment_descriptor(cls, segment: Points) -> np.ndarray[float]:
