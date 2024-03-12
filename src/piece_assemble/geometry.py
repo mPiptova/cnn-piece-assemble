@@ -168,3 +168,43 @@ def interval_difference(
         return (interval1[0], interval1[0])
 
     return interval1
+
+
+def fit_transform(points1: Points, points2: Points) -> tuple[np.ndarray, Point]:
+    """Find transformation which transforms one set of point into another.
+
+    This transformation includes only rotation and translation, not scaling or shearing.
+
+    Parameters
+    ----------
+    points1
+        2d array of points.
+    points2
+        2d array of points.
+
+    Returns
+    -------
+    rot_matrix
+        A transformation (2, 2) matrix.
+    translation
+        2d translation vector.
+    """
+    b = points2.flatten()
+    a = np.vstack([[[p[0], -p[1], 1, 0], [p[1], p[0], 0, 1]] for p in points1])
+
+    x = np.linalg.lstsq(a, b, rcond=None)[0]
+
+    rot_matrix = np.array(
+        [
+            [x[0], x[1]],
+            [-x[1], x[0]],
+        ]
+    )
+    scale = np.linalg.norm(rot_matrix[0])
+    rot_matrix = rot_matrix / scale
+
+    points1_t = points1 @ rot_matrix
+
+    translation = np.mean(points2, axis=0) - np.mean(points1_t, axis=0)
+
+    return rot_matrix, translation
