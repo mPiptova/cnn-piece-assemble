@@ -71,7 +71,7 @@ class OsculatingCircleDescriptor:
 
         descriptor = np.array(
             [
-                cls.segment_descriptor(cls.get_segment(arc.validity_interval))
+                cls.segment_descriptor(cls.get_segment(contour, arc.validity_interval))
                 for arc in arcs
             ]
         )
@@ -136,6 +136,45 @@ class OsculatingCircleDescriptor:
         ) / 2
         dist = dist / norm_factor
         return dist
+
+    def filter_small_arcs(self, min_size: float, min_angle: float) -> None:
+        """Filter out circle arcs which are too small.
+
+        Parameters
+        ----------
+        min_size
+            Circle arcs with size larger than this number won't be filtered out.
+        min_angle
+            Circle arcs with the size smaller than `min_size`, but angle larger than
+            `min_angle` won't be filtered out.
+            The angle is given in radians.
+        """
+
+        def is_large_enough(arc: ApproximatingArc) -> bool:
+            if (
+                np.linalg.norm(
+                    self._contour[arc.validity_interval[0]]
+                    - self._contour[arc.validity_interval[1]]
+                )
+                >= min_size
+            ):
+                return True
+            length = len(self.get_segment(self._contour, arc.validity_interval))
+            return length >= np.abs(arc.radius) * min_angle
+
+        new_arcs = [arc for arc in self._arcs if is_large_enough(arc)]
+        if len(new_arcs) == len(self._arcs):
+            return
+
+        self._arcs = new_arcs
+        self.descriptor = np.array(
+            [
+                self.segment_descriptor(
+                    self.get_segment(self._contour, arc.validity_interval)
+                )
+                for arc in self._arcs
+            ]
+        )
 
 
 def approximate_curve_by_circles(
