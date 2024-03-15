@@ -27,12 +27,12 @@ def draw_contour(
     Image represented as numpy array.
     """
     contour = np.round(contour).astype(int)
-    # Shift coordinates to eliminate empty space
-    min = np.min(contour, axis=0)
-    contour = contour - min
 
     # If image is not given, create empty one
     if contours_img is None:
+        # Shift coordinates to eliminate empty space
+        min_coordinates = np.min(contour, axis=0)
+        contour = contour - min_coordinates
         contours_img = np.ones((contour[:, 0].max() + 1, contour[:, 1].max() + 1))
     contours_img[contour[:, 0], contour[:, 1]] = value
     return contours_img
