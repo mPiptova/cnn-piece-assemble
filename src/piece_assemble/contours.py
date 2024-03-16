@@ -291,7 +291,11 @@ def get_osculating_circles(contours: Points) -> tuple[np.ndarray[float], Points]
 
 
 def get_validity_intervals(
-    contour: Points, radii: np.ndarray[float], centers: Points, tol_dist: float
+    contour: Points,
+    radii: np.ndarray[float],
+    centers: Points,
+    tol_dist: float,
+    closed_curve: bool = False,
 ) -> list[tuple[int, int]]:
     """Return the validity intervals for each osculating circle.
 
@@ -307,6 +311,8 @@ def get_validity_intervals(
         Distance tolerance. If the distance of the contour point and the osculating
         circle is smaller than this number, the point is in the validity interval of
         this circle.
+    closed_curve
+        Whether the curve is closed.
 
     Returns
     -------
@@ -320,19 +326,25 @@ def get_validity_intervals(
     valid = (dists_from_circle < tol_dist).astype(int)
     valid_changes = np.roll(valid, -1, axis=0) - valid
 
+    if not closed_curve:
+        valid_changes[0, :] = 1
+        valid_changes[-1, :] = -1
+
     starts_x, starts_y = np.where(valid_changes == 1)
-    starts_y = np.tile(starts_y, 2)
-    starts_x = np.concatenate((-(contour.shape[0] - starts_x), starts_x))
+    if closed_curve:
+        starts_y = np.tile(starts_y, 2)
+        starts_x = np.concatenate((-(contour.shape[0] - starts_x), starts_x))
 
     ends_x, ends_y = np.where(valid_changes == -1)
-    ends_y = np.tile(ends_y, 2)
-    ends_x = np.concatenate((ends_x, contour.shape[0] + ends_x))
+    if closed_curve:
+        ends_y = np.tile(ends_y, 2)
+        ends_x = np.concatenate((ends_x, contour.shape[0] + ends_x))
 
     validity_intervals = [
         normalize_interval(
             (
                 np.max(starts_x[(starts_y == i) & (starts_x <= i)]),
-                np.min(ends_x[(ends_y == i) & (ends_x > i)]),
+                np.min(ends_x[(ends_y == i) & (ends_x >= i)]) + 1,
             ),
             contour.shape[0],
         )
