@@ -13,6 +13,7 @@ from piece_assemble.contours import (
 )
 from piece_assemble.geometry import (
     extend_interval,
+    extend_intervals,
     interval_difference,
     point_to_line_dist,
     points_dist,
@@ -204,40 +205,36 @@ def approximate_curve_by_circles(
         approximated by this circle.
     """
     validity_intervals = get_validity_intervals(contour, radii, centers, tol_dist)
-    validity_intervals = [
-        (i, interval) for i, interval in enumerate(validity_intervals)
-    ]
     cycle_length = contour.shape[0]
-    validity_intervals_extended = [
-        (i, extend_interval(interval, cycle_length))
-        for i, interval in validity_intervals
-    ]
+    validity_intervals_extended = extend_intervals(validity_intervals, cycle_length)
+    interval_indexes = np.arange(len(validity_intervals))
 
     # In each iteration, find the osculating circle with the largest validity interval.
     # Then, update all other intervals and repeat.
     arcs = []
     while True:
-        valid_lengths = [end - start for _, (start, end) in validity_intervals_extended]
+        valid_lengths = (
+            validity_intervals_extended[:, 1] - validity_intervals_extended[:, 0]
+        )
         max_i = np.argmax(valid_lengths)
         length = valid_lengths[max_i]
         if length <= 1:
             break
-        i, validity_interval = validity_intervals[max_i]
-        arcs.append((i, validity_interval))
-        validity_intervals = [
-            (i, (interval_difference(r, validity_interval, cycle_length)))
-            for i, r in validity_intervals
-        ]
+        validity_interval = validity_intervals[max_i]
+        arcs.append((interval_indexes[max_i], validity_interval))
+        validity_intervals = np.array(
+            [
+                interval_difference(r, validity_interval, cycle_length)
+                for r in validity_intervals
+            ]
+        )
         # remove intervals of length 0:
-        validity_intervals = [
-            (i, interval)
-            for i, interval in validity_intervals
-            if interval[0] != interval[1]
-        ]
+        mask_is_nonzero = validity_intervals[:, 0] != validity_intervals[:, 1]
+        validity_intervals = validity_intervals[mask_is_nonzero]
+        interval_indexes = interval_indexes[mask_is_nonzero]
 
-        validity_intervals_extended = [
-            (i, extend_interval(r, cycle_length)) for i, r in validity_intervals
-        ]
+        validity_intervals_extended = extend_intervals(validity_intervals, cycle_length)
+
         if len(validity_intervals_extended) == 0:
             break
 

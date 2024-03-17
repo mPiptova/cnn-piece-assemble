@@ -179,7 +179,7 @@ def interval_difference(
     if interval1[0] == interval1[1]:
         return interval1
 
-    if interval1 == interval2:
+    if np.all(interval1 == interval2):
         return interval1[0], interval1[0]
 
     if is_in_cyclic_interval(
