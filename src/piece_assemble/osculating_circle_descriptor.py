@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from more_itertools import flatten
 from shapely import geometry
 from skimage.measure import approximate_polygon
 
@@ -204,7 +205,7 @@ def approximate_curve_by_circles(
         `validity_interval` is a range of indexes where the given contour is well
         approximated by this circle.
     """
-    validity_intervals = get_validity_intervals(contour, radii, centers, tol_dist)
+    validity_intervals = get_validity_intervals_split(contour, radii, centers, tol_dist)
     cycle_length = contour.shape[0]
     validity_intervals_extended = extend_intervals(validity_intervals, cycle_length)
     interval_indexes = np.arange(len(validity_intervals))
@@ -243,3 +244,109 @@ def approximate_curve_by_circles(
         ApproximatingArc(centers[arcs[i][0]], radii[arcs[i][0]], arcs[i][0], arcs[i][1])
         for i in arc_ordering
     ]
+
+
+def get_splitting_points(radii: np.ndarray, min_segment_length: int) -> np.ndarray:
+    """Find points where the curve can be split.
+
+    Those points are the global curvature maxima.
+
+    Parameters
+    ----------
+    radii
+        Array of radii.
+    min_segment_length
+        Minimal length of one part.
+
+    Returns
+    -------
+    array of indexes where the curve can be split.
+
+    """
+    candidate_points = np.argsort(np.abs(radii))
+    radii_sorted = np.abs(radii[candidate_points])
+    candidate_points = candidate_points[radii_sorted < 15]
+
+    selected_points = []
+    while len(candidate_points) > 0:
+        new_point = candidate_points[0]
+        selected_points.append(new_point)
+        candidate_points = candidate_points[
+            (np.abs(candidate_points - new_point) >= min_segment_length)
+            & (
+                (
+                    np.minimum(new_point, candidate_points)
+                    + len(radii)
+                    - np.maximum(new_point, candidate_points)
+                )
+                >= min_segment_length
+            )
+        ]
+
+    return np.sort(np.array(selected_points))
+
+
+def get_validity_intervals_split(
+    contour: Points,
+    radii: np.ndarray,
+    centers: Points,
+    tol_dist: float,
+    min_segment_length: int = 500,
+) -> np.ndarray:
+    """Get approximation validity intervals for each osculating circle.
+
+    This function first splits the curve to several separate parts and computes
+    the validity intervals for each part separately.
+
+    Parameters
+    ----------
+    contour
+        2d array of all points representing a shape contour.
+    radii
+        1d array of osculating circle radii.
+    centers
+        2d array of osculating circle center points.
+    tol_dist
+        Distance tolerance. If the distance of the contour point and the osculating
+        circle is smaller than this number, the point is in the validity interval of
+        this circle.
+    min_segment_length
+        Minimal length of one part.
+
+    Returns
+    -------
+    validity_intervals
+        Array of validity intervals for each osculating circle.
+    """
+    splitting_points = get_splitting_points(radii, min_segment_length)
+    if len(splitting_points) <= 1:
+        return get_validity_intervals(contour, radii, centers, tol_dist, True)
+
+    # Shift contour so it starts in the fist one of splitting points
+    shift = -splitting_points[0]
+    contour = np.roll(contour, shift, axis=0)
+    radii = np.roll(radii, shift)
+    centers = np.roll(centers, shift, axis=0)
+    splitting_points += shift
+
+    segment_ranges = [
+        extend_interval(interval, len(radii))
+        for interval in zip(splitting_points, np.roll(splitting_points, -1))
+    ]
+    validity_intervals = list(
+        flatten(
+            [
+                get_validity_intervals(
+                    contour[r[0] : r[1]],
+                    radii[r[0] : r[1]],
+                    centers[r[0] : r[1]],
+                    tol_dist,
+                    False,
+                )
+                + r[0]
+                for r in segment_ranges
+            ]
+        )
+    )
+    validity_intervals = np.roll(validity_intervals, -shift, axis=0)
+    return (validity_intervals - shift) % len(radii)

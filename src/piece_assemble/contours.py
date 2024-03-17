@@ -295,8 +295,8 @@ def get_validity_intervals(
     radii: np.ndarray[float],
     centers: Points,
     tol_dist: float,
-    closed_curve: bool = False,
-) -> list[tuple[int, int]]:
+    closed_curve: bool = True,
+) -> np.ndarray:
     """Return the validity intervals for each osculating circle.
 
     Parameters
@@ -341,16 +341,18 @@ def get_validity_intervals(
         ends_x = np.concatenate((ends_x, contour.shape[0] + ends_x))
 
     validity_intervals = [
-        normalize_interval(
-            (
-                np.max(starts_x[(starts_y == i) & (starts_x <= i)]),
-                np.min(ends_x[(ends_y == i) & (ends_x >= i)]) + 1,
-            ),
-            contour.shape[0],
+        (
+            np.max(starts_x[(starts_y == i) & (starts_x <= i)]),
+            np.min(ends_x[(ends_y == i) & (ends_x >= i)]) + 1,
         )
         if not np.isinf(radii[i])
         else (i, i + 1)
-        for i in range(contour.shape[0])
+        for i in range(len(radii))
     ]
 
-    return validity_intervals
+    if closed_curve:
+        validity_intervals = [
+            normalize_interval(interval, len(radii)) for interval in validity_intervals
+        ]
+
+    return np.array(validity_intervals)
