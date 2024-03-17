@@ -99,6 +99,38 @@ def extend_interval(
     return (interval[0] - cycle_length, interval[1])
 
 
+def extend_intervals(intervals: np.ndarray, cycle_length: int):
+    """Extend the intervals in the cyclic domain.
+
+    This function converts intervals such as (9, 2) to (9, 12), given that
+    `cycle_length == 10`. In the output interval, the fist bound is always smaller than
+    the second one.
+
+    Parameters
+    ----------
+    interval
+        2d array, each row represents a range.
+    cycle_length
+        Total length of the cycle domain where the intervals lie.
+
+    Returns
+    -------
+    extended_intervals
+        An interval where on of the numbers might be < 0 or >= `cycle_lengths`, but the
+        first bound is always smaller than the second one.
+    """
+    return np.hstack(
+        (
+            intervals[:, 0, np.newaxis],
+            np.where(
+                intervals[:, 0] <= intervals[:, 1],
+                intervals[:, 1],
+                intervals[:, 1] + cycle_length,
+            )[:, np.newaxis],
+        )
+    )
+
+
 def is_in_cyclic_interval(num: float, interval: Interval, cycle_length: int) -> bool:
     """Determine whether the given number is in the cyclic interval.
 
