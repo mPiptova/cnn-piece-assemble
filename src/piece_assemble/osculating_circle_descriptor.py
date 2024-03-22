@@ -16,7 +16,6 @@ from piece_assemble.geometry import (
     extend_interval,
     extend_intervals,
     interval_difference,
-    point_to_line_dist,
     points_dist,
 )
 from piece_assemble.types import Interval, Point, Points
@@ -88,7 +87,9 @@ class OsculatingCircleDescriptor:
         return contour[idxs]
 
     @classmethod
-    def segment_descriptor(cls, segment: Points) -> np.ndarray[float]:
+    def segment_descriptor(
+        cls, segment: Points, n_points_between: int = 3
+    ) -> np.ndarray[float]:
         """Get descriptor of given curve segment.
 
         Parameters
@@ -103,11 +104,8 @@ class OsculatingCircleDescriptor:
         centroid = segment.mean(axis=0)
         p_start = segment[0]
         p_end = segment[-1]
-        p_between = (p_start + p_end) / 2
 
-        center_i = np.abs(point_to_line_dist(segment, (centroid, p_between))).argmin()
-        p_center = segment[center_i]
-
+        # Determine segment rotation
         rot_vector = p_start - p_end
         rot_vector = rot_vector / np.linalg.norm(rot_vector)
 
@@ -115,12 +113,14 @@ class OsculatingCircleDescriptor:
         cos_a = rot_vector[1]
         rot_matrix = np.array([[cos_a, sin_a], [-sin_a, cos_a]])
 
-        vectors = (
-            p_start - centroid,
-            p_center - centroid,
-            p_end - centroid,
-        )
-        return np.concatenate([vector @ rot_matrix for vector in vectors])
+        subsegment_len = len(segment) // (n_points_between + 1)
+        vectors = [
+            p_start,
+            *[segment[subsegment_len * (i + 1)] for i in range(n_points_between)],
+            p_end,
+        ]
+
+        return np.concatenate([(vector - centroid) @ rot_matrix for vector in vectors])
 
     def get_distances(self, other: OsculatingCircleDescriptor) -> np.ndarray:
         desc1 = self.descriptor
