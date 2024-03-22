@@ -126,17 +126,21 @@ class OsculatingCircleDescriptor:
     def get_distances(self, other: OsculatingCircleDescriptor) -> np.ndarray:
         desc1 = self.descriptor
         desc2 = other.descriptor
-        dist1 = points_dist(desc1[:, :2], desc2[:, 4:])
-        dist2 = points_dist(desc1[:, 2:4], desc2[:, 2:4])
-        dist3 = points_dist(desc1[:, 4:], desc2[:, :2])
 
-        dist = dist1 + dist2 + dist3
+        dist = np.zeros((desc1.shape[0], desc2.shape[0]))
+
+        num_vectors = desc1.shape[1]
+        for i in range(num_vectors // 2):
+            dist += points_dist(
+                desc1[:, i * 2 : (i + 1) * 2],
+                -desc2[:, num_vectors - (i + 1) * 2 : num_vectors - i * 2],
+            )
 
         norm_factor = (
             np.linalg.norm(desc1[:, np.newaxis, :2], axis=2)
             + np.linalg.norm(desc2[np.newaxis, :, 4:], axis=2)
         ) / 2
-        dist = dist / norm_factor
+        dist = dist / (norm_factor * 10)
         return dist
 
     def filter_small_arcs(self, min_size: float, min_angle: float) -> None:
