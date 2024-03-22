@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.spatial import KDTree
 
@@ -320,3 +324,50 @@ def icp_iteration(points1: Points, points2_tree: KDTree) -> tuple[np.ndarray, Po
 
 def get_rotation_matrix(angle: float) -> np.ndarray:
     return np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+
+
+@dataclass
+class Transformation:
+    """Class for representing geometric transformation,
+    in particular rotation and translation.
+    """
+
+    rotation_angle: float
+    translation: Point
+
+    @property
+    def rotation_matrix(self):
+        """Return transformation rotation matrix."""
+        return get_rotation_matrix(self.rotation_angle)
+
+    def apply(self, points: Points) -> Points:
+        """Apply transformation to a set of points
+
+        Parameters
+        ----------
+        points
+            2d array of points.
+
+        Returns
+        -------
+        2d array of rotated points.
+        """
+        return points @ self.rotation_matrix + self.translation
+
+    def compose(self, second: Transformation) -> Transformation:
+        """Compose this transformation with another one.
+
+        This transformation is applied first, the other second.
+
+        Parameters
+        ----------
+        second
+            A transformation that should be applied second.
+
+        Returns
+        -------
+        Composed transformation.
+        """
+        angle = self.rotation_angle + second.rotation_angle
+        translation = self.translation * second.rotation_matrix + second.translation
+        return Transformation(angle, translation)
