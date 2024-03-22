@@ -103,17 +103,16 @@ class OsculatingCircleDescriptor:
         centroid = segment.mean(axis=0)
         p_start = segment[0]
         p_end = segment[-1]
+        p_between = (p_start + p_end) / 2
 
-        center_i = np.abs(
-            point_to_line_dist(segment, (centroid, (p_start + p_end) / 2))
-        ).argmin()
+        center_i = np.abs(point_to_line_dist(segment, (centroid, p_between))).argmin()
         p_center = segment[center_i]
 
-        rot_vector = p_center - centroid
-        rot_vector_norm = np.linalg.norm(rot_vector)
+        rot_vector = p_start - p_end
+        rot_vector = rot_vector / np.linalg.norm(rot_vector)
 
-        sin_a = rot_vector[0] / rot_vector_norm
-        cos_a = rot_vector[1] / rot_vector_norm
+        sin_a = rot_vector[0]
+        cos_a = rot_vector[1]
         rot_matrix = np.array([[cos_a, sin_a], [-sin_a, cos_a]])
 
         vectors = (
