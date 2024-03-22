@@ -248,7 +248,11 @@ def fit_transform(points1: Points, points2: Points) -> tuple[np.ndarray, Point]:
 
 
 def icp(
-    points1: Points, points2: Points, init_rotation: np.ndarray, init_translation: Point
+    points1: Points,
+    points2: Points,
+    init_rotation: np.ndarray,
+    init_translation: Point,
+    dist_tol: float = 5,
 ) -> tuple[np.ndarray, Point, float]:
     """Find transformation between two sets of points using Iterative Closest Point
     algorithm
@@ -279,8 +283,8 @@ def icp(
     points_transformed = points1 @ init_rotation + init_translation
 
     total_rotation = init_rotation
-    while True:
-        rotation, translation = icp_iteration(points_transformed, tree)
+    for _ in range(20):
+        rotation, translation = icp_iteration(points_transformed, tree, dist_tol * 4)
         total_rotation = total_rotation @ rotation
         contours_new = points_transformed @ rotation + translation
         if np.linalg.norm(contours_new - points_transformed, axis=1).max() < 1:
@@ -290,12 +294,14 @@ def icp(
     total_translation = np.mean(points_transformed, axis=0) - np.mean(
         points1 @ total_rotation, axis=0
     )
-    length = (tree.query(points_transformed, k=1)[0] < 5).sum()
+    length = (tree.query(points_transformed, k=1)[0] < dist_tol).sum()
 
     return total_rotation, total_translation, length
 
 
-def icp_iteration(points1: Points, points2_tree: KDTree) -> tuple[np.ndarray, Point]:
+def icp_iteration(
+    points1: Points, points2_tree: KDTree, dist_tol: float = 20
+) -> tuple[np.ndarray, Point]:
     """Do one iteration of the Iterative Closest Point algorithm.
 
     Parameters
@@ -310,7 +316,7 @@ def icp_iteration(points1: Points, points2_tree: KDTree) -> tuple[np.ndarray, Po
     rotation, translation
     """
     nearest_dist, nearest_ind = points2_tree.query(points1, k=1)
-    near_idx = nearest_dist < 20
+    near_idx = nearest_dist < dist_tol
 
     if near_idx.sum() == 0:
         # objects are too far from each other, no transformation can be found
