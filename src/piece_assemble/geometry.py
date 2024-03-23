@@ -366,5 +366,6 @@ class Transformation:
         Composed transformation.
         """
         angle = self.rotation_angle + second.rotation_angle
-        translation = self.translation * second.rotation_matrix + second.translation
+        translation = self.translation @ second.rotation_matrix + second.translation
+
         return Transformation(angle, translation)
