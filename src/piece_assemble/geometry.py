@@ -207,7 +207,7 @@ def interval_difference(
     return interval1
 
 
-def fit_transform(points1: Points, points2: Points) -> tuple[np.ndarray, Point]:
+def fit_transform(points1: Points, points2: Points) -> Transformation:
     """Find transformation which transforms one set of point into another.
 
     This transformation includes only rotation and translation, not scaling or shearing.
@@ -221,10 +221,7 @@ def fit_transform(points1: Points, points2: Points) -> tuple[np.ndarray, Point]:
 
     Returns
     -------
-    rot_matrix
-        A transformation (2, 2) matrix.
-    translation
-        2d translation vector.
+    transformation
     """
     b = points2.flatten()
     a = np.vstack([[[p[0], -p[1], 1, 0], [p[1], p[0], 0, 1]] for p in points1])
@@ -244,16 +241,16 @@ def fit_transform(points1: Points, points2: Points) -> tuple[np.ndarray, Point]:
 
     translation = np.mean(points2, axis=0) - np.mean(points1_t, axis=0)
 
-    return rot_matrix, translation
+    angle = np.arctan2(-rot_matrix[0, 1], rot_matrix[0, 0])
+    return Transformation(angle, translation)
 
 
 def icp(
     points1: Points,
     points2: Points,
-    init_rotation: np.ndarray,
-    init_translation: Point,
+    init_transformation: Transformation,
     dist_tol: float = 5,
-) -> tuple[np.ndarray, Point, float]:
+) -> tuple[Transformation, float]:
     """Find transformation between two sets of points using Iterative Closest Point
     algorithm
 
@@ -266,42 +263,37 @@ def icp(
         The first point cloud. 2d array of points.
     points2
         The second point cloud. 2d array of points.
-    init_rotation
-        Initial rotation to be applied to `points1`
-    init_translation
-        Initial translation to be applied to `points1`
+    init_transformation
+        Initial transform to be applied to `points1`.
 
     Returns
     -------
-    rotation, translation
+    transformation
         Transformation which maps `points1` to `points2`
     length
         Size of the correspondence between the two point clouds after the
         transformation.
     """
     tree = KDTree(points2)
-    points_transformed = points1 @ init_rotation + init_translation
+    points_transformed = init_transformation.apply(points1)
 
-    total_rotation = init_rotation
+    total_transformation = init_transformation
     for _ in range(20):
-        rotation, translation = icp_iteration(points_transformed, tree, dist_tol * 4)
-        total_rotation = total_rotation @ rotation
-        contours_new = points_transformed @ rotation + translation
+        t = icp_iteration(points_transformed, tree, dist_tol * 4)
+        total_transformation = total_transformation.compose(t)
+        contours_new = t.apply(points_transformed)
         if np.linalg.norm(contours_new - points_transformed, axis=1).max() < 1:
             break
         points_transformed = contours_new
 
-    total_translation = np.mean(points_transformed, axis=0) - np.mean(
-        points1 @ total_rotation, axis=0
-    )
     length = (tree.query(points_transformed, k=1)[0] < dist_tol).sum()
 
-    return total_rotation, total_translation, length
+    return total_transformation, length
 
 
 def icp_iteration(
     points1: Points, points2_tree: KDTree, dist_tol: float = 20
-) -> tuple[np.ndarray, Point]:
+) -> Transformation:
     """Do one iteration of the Iterative Closest Point algorithm.
 
     Parameters
@@ -313,19 +305,18 @@ def icp_iteration(
 
     Returns
     -------
-    rotation, translation
+    transformation
     """
     nearest_dist, nearest_ind = points2_tree.query(points1, k=1)
     near_idx = nearest_dist < dist_tol
 
     if near_idx.sum() == 0:
         # objects are too far from each other, no transformation can be found
-        return np.array([[1, 0], [0, 1]]), np.array([0, 0])
+        return Transformation(0, np.array([0, 0]))
     points1_near = points1[near_idx]
     points2_near = points2_tree.data[nearest_ind][near_idx]
 
-    rotation, translation = fit_transform(points1_near, points2_near)
-    return rotation, translation
+    return fit_transform(points1_near, points2_near)
 
 
 def get_rotation_matrix(angle: float) -> np.ndarray:
