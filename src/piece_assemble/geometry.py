@@ -369,3 +369,8 @@ class Transformation:
         translation = self.translation @ second.rotation_matrix + second.translation
 
         return Transformation(angle, translation)
+
+    @classmethod
+    def identity(cls) -> Transformation:
+        """Return identity transformation."""
+        return cls(0, np.array([0, 0]))
