@@ -389,3 +389,8 @@ class Transformation:
             abs(self.rotation_angle - other.rotation_angle) < angle_tol
             and np.linalg.norm(self.translation - other.translation) < translation_tol
         )
+
+
+def get_common_contour_length(contour1: Points, contour2: Points, tol: float = 10):
+    tree1 = KDTree(contour1)
+    return (tree1.query(contour2, k=1)[0] < tol).sum()

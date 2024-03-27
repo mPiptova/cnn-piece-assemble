@@ -5,7 +5,7 @@ from itertools import combinations
 
 import shapely
 
-from piece_assemble.geometry import Transformation
+from piece_assemble.geometry import Transformation, get_common_contour_length
 from piece_assemble.osculating_circle_descriptor import OsculatingCircleDescriptor
 
 
@@ -20,8 +20,12 @@ class Cluster:
 
     @cached_property
     def border_length(self) -> int:
-        # TODO: Implement this
-        return 0
+        total_length = 0
+        for key1, key2 in combinations(self.piece_ids, 2):
+            total_length += get_common_contour_length(
+                self.descriptors[key1]._contour, self.descriptors[key2]._contour
+            )
+        return total_length
 
     @property
     def piece_ids(self) -> set[str]:
@@ -43,7 +47,14 @@ class Cluster:
         self.descriptors[descriptor.name] = descriptor
         self.transformations[descriptor.name] = transformation
 
-        # TODO: Update border_length and self_intersection and score
+        for key in self.piece_ids:
+            if key == descriptor.name:
+                continue
+            self.border_length += get_common_contour_length(
+                descriptor._contour, self.descriptors[key]._contour
+            )
+
+        # TODO: Update self_intersection and score
 
     def transform(self, transformation: Transformation) -> Cluster:
         new_pieces = {
