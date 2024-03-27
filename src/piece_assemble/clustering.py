@@ -49,6 +49,15 @@ class Cluster:
             ]
         )
 
+    def intersection(self, polygon) -> float:
+        polygons = [
+            shapely.transform(desc._polygon, lambda pol: t.apply(pol))
+            for desc, t in self._pieces.values()
+        ]
+        return max(
+            [p.intersection(polygon).area / min(p.area, polygon.area) for p in polygons]
+        )
+
     def merge(self, other: Cluster) -> Cluster:
         common_keys = self.pieces_ids.intersection(other.pieces_ids)
 
