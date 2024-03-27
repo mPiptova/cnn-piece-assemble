@@ -249,8 +249,8 @@ def icp(
     points1: Points,
     points2: Points,
     init_transformation: Transformation,
-    dist_tol: float = 5,
-) -> tuple[Transformation, float]:
+    dist_tol: float = 20,
+) -> Transformation:
     """Find transformation between two sets of points using Iterative Closest Point
     algorithm
 
@@ -270,25 +270,20 @@ def icp(
     -------
     transformation
         Transformation which maps `points1` to `points2`
-    length
-        Size of the correspondence between the two point clouds after the
-        transformation.
     """
     tree = KDTree(points2)
     points_transformed = init_transformation.apply(points1)
 
     total_transformation = init_transformation
     for _ in range(20):
-        t = icp_iteration(points_transformed, tree, dist_tol * 4)
+        t = icp_iteration(points_transformed, tree, dist_tol)
         total_transformation = total_transformation.compose(t)
         contours_new = t.apply(points_transformed)
         if np.linalg.norm(contours_new - points_transformed, axis=1).max() < 1:
             break
         points_transformed = contours_new
 
-    length = (tree.query(points_transformed, k=1)[0] < dist_tol).sum()
-
-    return total_transformation, length
+    return total_transformation
 
 
 def icp_iteration(
