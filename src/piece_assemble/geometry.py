@@ -378,3 +378,14 @@ class Transformation:
     def inverse(self) -> Transformation:
         new_translation = -self.translation @ get_rotation_matrix(-self.rotation_angle)
         return Transformation(-self.rotation_angle, new_translation)
+
+    def is_close(
+        self,
+        other: Transformation,
+        angle_tol: float = 0.17,
+        translation_tol: float = 15,
+    ) -> bool:
+        return (
+            abs(self.rotation_angle - other.rotation_angle) < angle_tol
+            and np.linalg.norm(self.translation - other.translation) < translation_tol
+        )
