@@ -76,3 +76,8 @@ class Cluster:
         if new_cluster.self_intersection > 0.1:
             return None
         return new_cluster
+
+    @cached_property
+    def score(self) -> float:
+        # TODO: More sensible score
+        return len(self._pieces.keys())
