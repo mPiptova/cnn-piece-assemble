@@ -35,7 +35,9 @@ class Cluster:
             key: (desc, t.compose(transformation))
             for key, (desc, t) in self._pieces.items()
         }
-        return Cluster(new_pieces)
+        new_cluster = Cluster(new_pieces)
+        new_cluster.border_length = self.border_length
+        return new_cluster
 
     @cached_property
     def self_intersection(self) -> float:
