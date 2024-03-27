@@ -27,8 +27,10 @@ class Cluster:
     def piece_ids(self) -> set[str]:
         return set(self._pieces.keys())
 
-    def copy(self):
-        return Cluster(self._pieces.copy())
+    def copy(self) -> Cluster:
+        new_cluster = Cluster(self._pieces.copy())
+        new_cluster.border_length = self.border_length
+        return new_cluster
 
     def transform(self, transformation: Transformation) -> Cluster:
         new_pieces = {
