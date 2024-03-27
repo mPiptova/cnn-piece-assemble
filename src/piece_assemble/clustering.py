@@ -72,11 +72,13 @@ class Cluster:
             if not cluster1.transformations[key].is_close(
                 cluster2.transformations[key]
             ):
-                return None
+                # TODO: more meaningful error
+                raise ValueError()
 
-        new_cluster = Cluster(cluster1._pieces.update(cluster2._pieces))
-        if new_cluster.self_intersection > 0.1:
-            return None
+        new_pieces = cluster1._pieces.copy()
+        new_pieces.update(cluster2._pieces)
+        new_cluster = Cluster(new_pieces)
+
         return new_cluster
 
     @cached_property
