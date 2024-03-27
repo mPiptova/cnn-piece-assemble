@@ -32,6 +32,19 @@ class Cluster:
         new_cluster.border_length = self.border_length
         return new_cluster
 
+    def add(
+        self, descriptor: OsculatingCircleDescriptor, transformation: Transformation
+    ) -> None:
+        if descriptor.name in self.piece_ids:
+            # TODO: Create more meaningful error
+            raise ValueError()
+
+        self._pieces[descriptor.name] = (descriptor, transformation)
+        self.descriptors[descriptor.name] = descriptor
+        self.transformations[descriptor.name] = transformation
+
+        # TODO: Update border_length and self_intersection and score
+
     def transform(self, transformation: Transformation) -> Cluster:
         new_pieces = {
             key: (desc, t.compose(transformation))
