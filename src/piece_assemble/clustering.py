@@ -20,7 +20,8 @@ class Cluster:
 
     @cached_property
     def border_length(self) -> int:
-        raise NotImplementedError()
+        # TODO: Implement this
+        return 0
 
     @property
     def pieces_ids(self) -> set[str]:
