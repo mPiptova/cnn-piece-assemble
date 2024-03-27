@@ -88,7 +88,7 @@ class OsculatingCircleDescriptor:
 
     @classmethod
     def segment_descriptor(
-        cls, segment: Points, n_points_between: int = 3
+        cls, segment: Points, n_points_between: int = 5
     ) -> np.ndarray[float]:
         """Get descriptor of given curve segment.
 
@@ -136,6 +136,15 @@ class OsculatingCircleDescriptor:
             )
 
         return dist / num_vectors
+
+    def get_segment_lengths(self) -> np.ndarray:
+        def arc_len(arc: ApproximatingArc):
+            extended_interval = extend_interval(
+                arc.validity_interval, len(self._contour)
+            )
+            return extended_interval[1] - extended_interval[0]
+
+        return np.array([arc_len(arc) for arc in self._arcs])
 
     def filter_small_arcs(self, min_size: float, min_angle: float) -> None:
         """Filter out circle arcs which are too small.
