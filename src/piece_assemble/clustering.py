@@ -24,7 +24,7 @@ class Cluster:
         return 0
 
     @property
-    def pieces_ids(self) -> set[str]:
+    def piece_ids(self) -> set[str]:
         return set(self._pieces.keys())
 
     def copy(self):
@@ -60,7 +60,7 @@ class Cluster:
         )
 
     def merge(self, other: Cluster) -> Cluster:
-        common_keys = self.pieces_ids.intersection(other.pieces_ids)
+        common_keys = self.piece_ids.intersection(other.piece_ids)
 
         common_key = common_keys.pop()
         cluster1 = self.transform(self.transformations[common_key].inverse())
