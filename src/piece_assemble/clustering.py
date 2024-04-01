@@ -5,6 +5,7 @@ from itertools import combinations
 
 import shapely
 from shapely import Polygon
+from shapely.ops import unary_union
 
 from piece_assemble.geometry import Transformation, get_common_contour_length
 from piece_assemble.osculating_circle_descriptor import OsculatingCircleDescriptor
@@ -121,4 +122,10 @@ class Cluster:
     @cached_property
     def score(self) -> float:
         # TODO: More sensible score
-        return len(self._pieces.keys())
+        return self.border_length * (self.convexity**5)
+
+    @cached_property
+    def convexity(self) -> float:
+        polygons = self.transformed_polygons
+        union_polygon = unary_union(polygons)
+        return union_polygon.area / union_polygon.convex_hull.area
