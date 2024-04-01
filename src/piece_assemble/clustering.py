@@ -9,13 +9,11 @@ from shapely import Polygon
 from shapely.ops import unary_union
 
 from piece_assemble.geometry import Transformation, get_common_contour_length
-from piece_assemble.osculating_circle_descriptor import OsculatingCircleDescriptor
+from piece_assemble.piece import Piece
 
 
 class Cluster:
-    def __init__(
-        self, pieces: dict[str, tuple[OsculatingCircleDescriptor, Transformation]]
-    ) -> None:
+    def __init__(self, pieces: dict[str, tuple[Piece, Transformation]]) -> None:
         self._pieces = pieces
 
         self.descriptors = {key: desc for key, (desc, _) in pieces.items()}
@@ -41,9 +39,7 @@ class Cluster:
         new_cluster.border_length = self.border_length
         return new_cluster
 
-    def add(
-        self, descriptor: OsculatingCircleDescriptor, transformation: Transformation
-    ) -> None:
+    def add(self, descriptor: Piece, transformation: Transformation) -> None:
         if descriptor.name in self.piece_ids:
             # TODO: Create more meaningful error
             raise ValueError()

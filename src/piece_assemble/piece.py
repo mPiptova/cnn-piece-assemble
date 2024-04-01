@@ -29,7 +29,7 @@ class ApproximatingArc:
     validity_interval: Interval
 
 
-class OsculatingCircleDescriptor:
+class Piece:
     def __init__(
         self,
         name: str,
@@ -49,7 +49,7 @@ class OsculatingCircleDescriptor:
     @classmethod
     def from_contours(
         cls, contour: Points, name: str, sigma: int = 5, tol_dist: float = 2.5
-    ) -> OsculatingCircleDescriptor:
+    ) -> Piece:
         """Extract descriptor from given shape contour.
 
         Parameters
@@ -125,7 +125,7 @@ class OsculatingCircleDescriptor:
 
         return np.concatenate([(vector - centroid) @ rot_matrix for vector in vectors])
 
-    def get_distances(self, other: OsculatingCircleDescriptor) -> np.ndarray:
+    def get_distances(self, other: Piece) -> np.ndarray:
         desc1 = self.descriptor
         desc2 = other.descriptor
 
