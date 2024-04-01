@@ -39,7 +39,7 @@ class Piece:
         polygon_approximation_tolerance: float = 3,
     ) -> None:
         self.name = name
-        self._contour = contour
+        self.contour = contour
         self._arcs = arcs
         self.descriptor = descriptor
         self._polygon = geometry.Polygon(
@@ -143,7 +143,7 @@ class Piece:
     def get_segment_lengths(self) -> np.ndarray:
         def arc_len(arc: ApproximatingArc):
             extended_interval = extend_interval(
-                arc.validity_interval, len(self._contour)
+                arc.validity_interval, len(self.contour)
             )
             return extended_interval[1] - extended_interval[0]
 
@@ -165,13 +165,13 @@ class Piece:
         def is_large_enough(arc: ApproximatingArc) -> bool:
             if (
                 np.linalg.norm(
-                    self._contour[arc.validity_interval[0]]
-                    - self._contour[arc.validity_interval[1]]
+                    self.contour[arc.validity_interval[0]]
+                    - self.contour[arc.validity_interval[1]]
                 )
                 >= min_size
             ):
                 return True
-            length = len(self.get_segment(self._contour, arc.validity_interval))
+            length = len(self.get_segment(self.contour, arc.validity_interval))
             return length >= np.abs(arc.radius) * min_angle
 
         new_arcs = [arc for arc in self._arcs if is_large_enough(arc)]
@@ -182,7 +182,7 @@ class Piece:
         self.descriptor = np.array(
             [
                 self.segment_descriptor(
-                    self.get_segment(self._contour, arc.validity_interval)
+                    self.get_segment(self.contour, arc.validity_interval)
                 )
                 for arc in self._arcs
             ]

@@ -24,8 +24,8 @@ class Cluster:
         total_length = 0
         for key1, key2 in combinations(self.piece_ids, 2):
             total_length += get_common_contour_length(
-                self.transformations[key1].apply(self.descriptors[key1]._contour),
-                self.transformations[key2].apply(self.descriptors[key2]._contour),
+                self.transformations[key1].apply(self.descriptors[key1].contour),
+                self.transformations[key2].apply(self.descriptors[key2].contour),
                 4,
             )
         return total_length
@@ -52,7 +52,7 @@ class Cluster:
             if key == descriptor.name:
                 continue
             self.border_length += get_common_contour_length(
-                descriptor._contour, self.descriptors[key]._contour
+                descriptor.contour, self.descriptors[key].contour
             )
 
         # TODO: Update self_intersection and score
