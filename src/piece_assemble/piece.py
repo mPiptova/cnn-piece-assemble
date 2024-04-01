@@ -17,7 +17,7 @@ from piece_assemble.geometry import (
     points_dist,
 )
 from piece_assemble.segment import ApproximatingArc
-from piece_assemble.types import Interval, Points
+from piece_assemble.types import Points
 
 
 class Piece:
@@ -64,21 +64,9 @@ class Piece:
         radii, centers = get_osculating_circles(contour)
         arcs = approximate_curve_by_circles(contour, radii, centers, tol_dist)
 
-        descriptor = np.array(
-            [
-                cls.segment_descriptor(cls.get_segment(contour, arc.interval))
-                for arc in arcs
-            ]
-        )
+        descriptor = np.array([cls.segment_descriptor(arc.contour) for arc in arcs])
 
         return cls(name, contour, arcs, descriptor)
-
-    @classmethod
-    def get_segment(cls, contour: Points, interval: Interval) -> Points:
-        """Get part of the curve that belongs to the given interval."""
-        interval = extend_interval(interval, len(contour))
-        idxs = np.arange(interval[0], interval[1]) % len(contour)
-        return contour[idxs]
 
     @classmethod
     def segment_descriptor(
@@ -159,7 +147,7 @@ class Piece:
                 >= min_size
             ):
                 return True
-            length = len(self.get_segment(self.contour, arc.interval))
+            length = len(arc)
             return length >= np.abs(arc.radius) * min_angle
 
         new_arcs = [arc for arc in self._arcs if is_large_enough(arc)]
@@ -168,10 +156,7 @@ class Piece:
 
         self._arcs = new_arcs
         self.descriptor = np.array(
-            [
-                self.segment_descriptor(self.get_segment(self.contour, arc.interval))
-                for arc in self._arcs
-            ]
+            [self.segment_descriptor(arc.contour) for arc in self._arcs]
         )
 
 
