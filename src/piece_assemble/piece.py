@@ -16,7 +16,7 @@ from piece_assemble.geometry import (
     interval_difference,
     points_dist,
 )
-from piece_assemble.segment import ApproximatingArc
+from piece_assemble.segment import ApproximatingArc, Segment
 from piece_assemble.types import Points
 
 
@@ -25,13 +25,13 @@ class Piece:
         self,
         name: str,
         contour: Points,
-        arcs: list[ApproximatingArc],
+        segments: list[Segment],
         descriptor: np.ndarray[float],
         polygon_approximation_tolerance: float = 3,
     ) -> None:
         self.name = name
         self.contour = contour
-        self._arcs = arcs
+        self.segments = segments
         self.descriptor = descriptor
         self.polygon = geometry.Polygon(
             approximate_polygon(contour, polygon_approximation_tolerance)
@@ -124,7 +124,7 @@ class Piece:
             extended_interval = extend_interval(arc.interval, len(self.contour))
             return extended_interval[1] - extended_interval[0]
 
-        return np.array([arc_len(arc) for arc in self._arcs])
+        return np.array([arc_len(arc) for arc in self.segments])
 
     def filter_small_arcs(self, min_size: float, min_angle: float) -> None:
         """Filter out circle arcs which are too small.
@@ -150,13 +150,13 @@ class Piece:
             length = len(arc)
             return length >= np.abs(arc.radius) * min_angle
 
-        new_arcs = [arc for arc in self._arcs if is_large_enough(arc)]
-        if len(new_arcs) == len(self._arcs):
+        new_arcs = [arc for arc in self.segments if is_large_enough(arc)]
+        if len(new_arcs) == len(self.segments):
             return
 
-        self._arcs = new_arcs
+        self.segments = new_arcs
         self.descriptor = np.array(
-            [self.segment_descriptor(arc.contour) for arc in self._arcs]
+            [self.segment_descriptor(arc.contour) for arc in self.segments]
         )
 
 
