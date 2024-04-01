@@ -4,6 +4,7 @@ from functools import cached_property
 from itertools import combinations
 
 import shapely
+from shapely import Polygon
 
 from piece_assemble.geometry import Transformation, get_common_contour_length
 from piece_assemble.osculating_circle_descriptor import OsculatingCircleDescriptor
@@ -80,11 +81,15 @@ class Cluster:
             ]
         )
 
-    def intersection(self, polygon) -> float:
-        polygons = [
+    @property
+    def transformed_polygons(self) -> list[Polygon]:
+        return [
             shapely.transform(desc._polygon, lambda pol: t.apply(pol))
             for desc, t in self._pieces.values()
         ]
+
+    def intersection(self, polygon: Polygon) -> float:
+        polygons = self.transformed_polygons
         return max(
             [p.intersection(polygon).area / min(p.area, polygon.area) for p in polygons]
         )
