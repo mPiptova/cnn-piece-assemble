@@ -3,7 +3,7 @@ from PIL import ImageDraw
 from PIL.Image import Image as PilImage
 
 from piece_assemble.image import np_to_pil
-from piece_assemble.osculating_circle_descriptor import ApproximatingArc
+from piece_assemble.piece import ApproximatingArc
 from piece_assemble.types import NpImage, Point, Points
 
 
