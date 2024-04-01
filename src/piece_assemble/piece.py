@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 from more_itertools import flatten
 from shapely import geometry
@@ -18,15 +16,8 @@ from piece_assemble.geometry import (
     interval_difference,
     points_dist,
 )
-from piece_assemble.types import Interval, Point, Points
-
-
-@dataclass
-class ApproximatingArc:
-    center: Point
-    radius: float
-    contour_index: int
-    validity_interval: Interval
+from piece_assemble.segment import ApproximatingArc
+from piece_assemble.types import Interval, Points
 
 
 class Piece:
@@ -75,7 +66,7 @@ class Piece:
 
         descriptor = np.array(
             [
-                cls.segment_descriptor(cls.get_segment(contour, arc.validity_interval))
+                cls.segment_descriptor(cls.get_segment(contour, arc.interval))
                 for arc in arcs
             ]
         )
@@ -142,9 +133,7 @@ class Piece:
 
     def get_segment_lengths(self) -> np.ndarray:
         def arc_len(arc: ApproximatingArc):
-            extended_interval = extend_interval(
-                arc.validity_interval, len(self.contour)
-            )
+            extended_interval = extend_interval(arc.interval, len(self.contour))
             return extended_interval[1] - extended_interval[0]
 
         return np.array([arc_len(arc) for arc in self._arcs])
@@ -165,13 +154,12 @@ class Piece:
         def is_large_enough(arc: ApproximatingArc) -> bool:
             if (
                 np.linalg.norm(
-                    self.contour[arc.validity_interval[0]]
-                    - self.contour[arc.validity_interval[1]]
+                    self.contour[arc.interval[0]] - self.contour[arc.interval[1]]
                 )
                 >= min_size
             ):
                 return True
-            length = len(self.get_segment(self.contour, arc.validity_interval))
+            length = len(self.get_segment(self.contour, arc.interval))
             return length >= np.abs(arc.radius) * min_angle
 
         new_arcs = [arc for arc in self._arcs if is_large_enough(arc)]
@@ -181,9 +169,7 @@ class Piece:
         self._arcs = new_arcs
         self.descriptor = np.array(
             [
-                self.segment_descriptor(
-                    self.get_segment(self.contour, arc.validity_interval)
-                )
+                self.segment_descriptor(self.get_segment(self.contour, arc.interval))
                 for arc in self._arcs
             ]
         )
@@ -251,7 +237,9 @@ def approximate_curve_by_circles(
 
     arc_ordering = np.array([c[0] for c in arcs]).argsort()
     return [
-        ApproximatingArc(centers[arcs[i][0]], radii[arcs[i][0]], arcs[i][0], arcs[i][1])
+        ApproximatingArc(
+            arcs[i][1], contour, centers[arcs[i][0]], radii[arcs[i][0]], arcs[i][0]
+        )
         for i in arc_ordering
     ]
 

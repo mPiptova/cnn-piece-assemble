@@ -105,8 +105,8 @@ def draw_circle_approximation(
         # center = centers[i]
         # radius = np.abs(radii[i])
         point_start, point_end = (
-            contour[arc.validity_interval[0]],
-            contour[arc.validity_interval[1]],
+            contour[arc.interval[0]],
+            contour[arc.interval[1]],
         )
 
         alpha_start = np.rad2deg(np.arctan2(*(point_start - arc.center))) % 360
