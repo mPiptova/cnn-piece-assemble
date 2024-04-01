@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import cached_property
 from itertools import combinations
 
+import numpy as np
 import shapely
 from shapely import Polygon
 from shapely.ops import unary_union
@@ -129,3 +130,8 @@ class Cluster:
         polygons = self.transformed_polygons
         union_polygon = unary_union(polygons)
         return union_polygon.area / union_polygon.convex_hull.area
+
+    def indicator(self, all_ids):
+        return np.array(
+            [True if piece_id in self.piece_ids else False for piece_id in all_ids]
+        )
