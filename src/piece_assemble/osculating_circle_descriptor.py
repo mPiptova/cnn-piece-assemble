@@ -36,12 +36,15 @@ class OsculatingCircleDescriptor:
         contour: Points,
         arcs: list[ApproximatingArc],
         descriptor: np.ndarray[float],
+        polygon_approximation_tolerance: float = 3,
     ) -> None:
         self.name = name
         self._contour = contour
         self._arcs = arcs
         self.descriptor = descriptor
-        self._polygon = geometry.Polygon(approximate_polygon(contour, 10))
+        self._polygon = geometry.Polygon(
+            approximate_polygon(contour, polygon_approximation_tolerance)
+        )
 
     @classmethod
     def from_contours(
