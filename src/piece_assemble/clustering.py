@@ -69,7 +69,7 @@ class Cluster:
     @cached_property
     def self_intersection(self) -> float:
         polygons = [
-            shapely.transform(desc._polygon, lambda pol: t.apply(pol))
+            shapely.transform(desc.polygon, lambda pol: t.apply(pol))
             for desc, t in self._pieces.values()
         ]
         return max(
@@ -82,7 +82,7 @@ class Cluster:
     @property
     def transformed_polygons(self) -> list[Polygon]:
         return [
-            shapely.transform(desc._polygon, lambda pol: t.apply(pol))
+            shapely.transform(desc.polygon, lambda pol: t.apply(pol))
             for desc, t in self._pieces.values()
         ]
 

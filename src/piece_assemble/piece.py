@@ -42,7 +42,7 @@ class Piece:
         self.contour = contour
         self._arcs = arcs
         self.descriptor = descriptor
-        self._polygon = geometry.Polygon(
+        self.polygon = geometry.Polygon(
             approximate_polygon(contour, polygon_approximation_tolerance)
         )
 
