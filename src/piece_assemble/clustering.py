@@ -97,6 +97,10 @@ class Cluster:
     def merge(self, other: Cluster) -> Cluster:
         common_keys = self.piece_ids.intersection(other.piece_ids)
 
+        if len(common_keys) == 0:
+            # TODO: more meaningful error
+            raise ValueError
+
         common_key = common_keys.pop()
         cluster1 = self.transform(self.transformations[common_key].inverse())
         cluster2 = other.transform(other.transformations[common_key].inverse())
