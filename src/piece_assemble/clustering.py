@@ -23,7 +23,9 @@ class Cluster:
         total_length = 0
         for key1, key2 in combinations(self.piece_ids, 2):
             total_length += get_common_contour_length(
-                self.descriptors[key1]._contour, self.descriptors[key2]._contour
+                self.transformations[key1].apply(self.descriptors[key1]._contour),
+                self.transformations[key2].apply(self.descriptors[key2]._contour),
+                4,
             )
         return total_length
 
