@@ -386,6 +386,15 @@ class Transformation:
         )
 
 
-def get_common_contour_length(contour1: Points, contour2: Points, tol: float = 10):
+def get_common_contour(
+    contour1: Points, contour2: Points, tol: float = 10
+) -> tuple[Points, Points]:
     tree1 = KDTree(contour1)
-    return (tree1.query(contour2, k=1)[0] < tol).sum()
+    distances, points = tree1.query(contour2, k=1)
+    # Return points which are close enough
+    close_mask = distances < tol
+    return contour1[points[close_mask]], contour2[close_mask]
+
+
+def get_common_contour_length(contour1: Points, contour2: Points, tol: float = 10):
+    return len(get_common_contour(contour1, contour2, tol)[0])
