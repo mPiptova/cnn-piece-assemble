@@ -3,9 +3,12 @@ from __future__ import annotations
 import numpy as np
 from more_itertools import flatten
 from shapely import geometry
+from skimage.filters import rank
 from skimage.measure import approximate_polygon
+from skimage.morphology import diamond, disk, erosion
 
 from piece_assemble.contours import (
+    extract_contours,
     get_osculating_circles,
     get_validity_intervals,
     smooth_contours,
@@ -17,56 +20,57 @@ from piece_assemble.geometry import (
     points_dist,
 )
 from piece_assemble.segment import ApproximatingArc, Segment
-from piece_assemble.types import Points
+from piece_assemble.types import BinImg, NpImage, Points
 
 
 class Piece:
     def __init__(
         self,
         name: str,
-        contour: Points,
-        segments: list[Segment],
-        descriptor: np.ndarray[float],
+        img: NpImage,
+        mask: BinImg,
+        sigma: float = 5,
+        tol_dist: float = 2.5,
         polygon_approximation_tolerance: float = 3,
+        img_mean_window_r: int = 3,
     ) -> None:
+
         self.name = name
-        self.contour = contour
-        self.segments = segments
-        self.descriptor = descriptor
+        self.img = img
+        self.mask = mask
+
+        # For averaging, use eroded mask for better behavior near contours
+        mask_eroded = erosion(self.mask.astype(bool), diamond(1))
+        footprint = disk(img_mean_window_r)
+        if len(self.img.shape) == 3:
+            self.img_avg = (
+                np.stack(
+                    [
+                        rank.mean(self.img[:, :, channel], footprint, mask=mask_eroded)
+                        for channel in range(self.img.shape[2])
+                    ],
+                    axis=2,
+                )
+                / 255
+            )
+        else:
+            self.img_avg = rank.mean(self.img, footprint, mask=mask_eroded)
+
+        contour = extract_contours(mask)[0]
+        self.contour = smooth_contours(contour, sigma)
         self.polygon = geometry.Polygon(
-            approximate_polygon(contour, polygon_approximation_tolerance)
+            approximate_polygon(self.contour, polygon_approximation_tolerance)
         )
 
-    @classmethod
-    def from_contours(
-        cls, contour: Points, name: str, sigma: int = 5, tol_dist: float = 2.5
-    ) -> Piece:
-        """Extract descriptor from given shape contour.
+        # Split curve and extract descriptors
+        radii, centers = get_osculating_circles(self.contour)
+        self.segments: list[Segment] = approximate_curve_by_circles(
+            self.contour, radii, centers, tol_dist
+        )
 
-        Parameters
-        ----------
-        contour
-            2d array of points representing a shape contour.
-        name
-            ID of this shape.
-        sigma
-            Smoothing strength.
-        tol_dist
-            Distance tolerance. If the distance of the contour point and the osculating
-            circle is smaller than this number, the point is in the validity interval of
-            this circle.
-
-        Returns
-        -------
-        Instance of OsculatingCircleDescriptor.
-        """
-        contour = smooth_contours(contour, sigma)
-        radii, centers = get_osculating_circles(contour)
-        arcs = approximate_curve_by_circles(contour, radii, centers, tol_dist)
-
-        descriptor = np.array([cls.segment_descriptor(arc.contour) for arc in arcs])
-
-        return cls(name, contour, arcs, descriptor)
+        self.descriptor = np.array(
+            [self.segment_descriptor(segment.contour) for segment in self.segments]
+        )
 
     @classmethod
     def segment_descriptor(
