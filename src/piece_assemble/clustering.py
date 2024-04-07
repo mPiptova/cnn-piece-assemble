@@ -3,10 +3,12 @@ from __future__ import annotations
 from functools import cached_property
 from itertools import combinations
 
+import cv2 as cv
 import numpy as np
 import shapely
 from shapely import Polygon
 from shapely.ops import unary_union
+from skimage.transform import rotate
 
 from piece_assemble.geometry import Transformation, get_common_contour_length
 from piece_assemble.piece import Piece
@@ -131,3 +133,55 @@ class Cluster:
         return np.array(
             [True if piece_id in self.piece_ids else False for piece_id in all_ids]
         )
+
+    def draw(self) -> np.ndarray:
+        min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
+
+        piece_imgs = []
+        center_positions = []
+        for piece, transformation in self._pieces.values():
+            deg_angle = np.rad2deg(transformation.rotation_angle)
+            rot_img = rotate(
+                np.where(piece.mask[:, :, np.newaxis], piece.img, -1),
+                -deg_angle,
+                resize=True,
+                mode="constant",
+                cval=-1,
+            )
+
+            # Crop the image symmetrically to keep the center position
+            col, row, w, h = cv.boundingRect((rot_img[:, :, 0] != -1).astype("uint8"))
+            row = min(row, (rot_img.shape[0] - h - row))
+            col = min(col, (rot_img.shape[1] - w - row))
+            h = rot_img.shape[0] - 2 * row
+            w = rot_img.shape[1] - 2 * col
+            rot_img = rot_img[row:-row, col:-col]
+
+            piece_imgs.append(rot_img)
+
+            center_orig = (piece.contour.max(axis=0) + piece.contour.min(axis=0)) / 2
+            center_target = transformation.apply(center_orig)
+            center_positions.append(center_target.round().astype(int))
+
+            min_row = min(min_row, center_target[0] - h / 2)
+            min_col = min(min_col, center_target[1] - w / 2)
+            max_row = max(max_row, center_target[0] + h / 2)
+            max_col = max(max_col, center_target[1] + w / 2)
+
+        offset = np.array((min_row, min_col)) + 2
+        size = (int(round(max_row - min_row)) + 4, int(round(max_col - min_col)) + 4, 3)
+        img = np.ones(size)
+
+        for piece_img, center_pos in zip(piece_imgs, center_positions):
+            top_left = np.maximum(
+                0, center_pos - offset - (np.array(piece_img.shape[:2]) // 2)
+            ).astype(int)
+            img_crop = img[
+                top_left[0] : top_left[0] + piece_img.shape[0],
+                top_left[1] : top_left[1] + piece_img.shape[1],
+            ]
+            img[
+                top_left[0] : top_left[0] + piece_img.shape[0],
+                top_left[1] : top_left[1] + piece_img.shape[1],
+            ] = np.where(piece_img < 0, img_crop, piece_img)
+        return img
