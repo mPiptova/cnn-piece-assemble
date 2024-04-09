@@ -284,8 +284,9 @@ def get_osculating_circles(contours: Points) -> tuple[np.ndarray[float], Points]
     normals = np.vstack([-dy, dx]).T
     normals = normals / np.expand_dims(np.linalg.norm(normals, axis=1), 1)
 
-    radii = 1 / curvature
-    centers = contours + np.expand_dims(radii, 1) * normals
+    with np.errstate(divide="ignore", invalid="ignore"):
+        radii = 1 / curvature
+        centers = contours + np.expand_dims(radii, 1) * normals
 
     return radii, centers
 
@@ -322,7 +323,8 @@ def get_validity_intervals(
     if len(contour) == 0:
         return []
     dists = points_dist(contour, centers)
-    dists_from_circle = np.abs(dists - np.abs(radii))
+    with np.errstate(invalid="ignore"):
+        dists_from_circle = np.abs(dists - np.abs(radii))
     valid = (dists_from_circle < tol_dist).astype(int)
     valid_changes = np.roll(valid, -1, axis=0) - valid
 
