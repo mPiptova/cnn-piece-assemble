@@ -12,6 +12,7 @@ from skimage.transform import rotate
 
 from piece_assemble.geometry import Transformation, get_common_contour_length
 from piece_assemble.piece import Piece
+from piece_assemble.visualization import draw_contour
 
 
 class Cluster:
@@ -134,7 +135,7 @@ class Cluster:
             [True if piece_id in self.piece_ids else False for piece_id in all_ids]
         )
 
-    def draw(self) -> np.ndarray:
+    def draw(self, draw_contours: bool = False) -> np.ndarray:
         min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
 
         piece_imgs = []
@@ -151,8 +152,8 @@ class Cluster:
 
             # Crop the image symmetrically to keep the center position
             col, row, w, h = cv.boundingRect((rot_img[:, :, 0] != -1).astype("uint8"))
-            row = min(row, (rot_img.shape[0] - h - row))
-            col = min(col, (rot_img.shape[1] - w - row))
+            row = min(row, rot_img.shape[0] - h - row)
+            col = min(col, rot_img.shape[1] - w - col)
             h = rot_img.shape[0] - 2 * row
             w = rot_img.shape[1] - 2 * col
             rot_img = rot_img[row:-row, col:-col]
@@ -163,13 +164,13 @@ class Cluster:
             center_target = transformation.apply(center_orig)
             center_positions.append(center_target.round().astype(int))
 
-            min_row = min(min_row, center_target[0] - h / 2)
-            min_col = min(min_col, center_target[1] - w / 2)
-            max_row = max(max_row, center_target[0] + h / 2)
-            max_col = max(max_col, center_target[1] + w / 2)
+            min_row = min(min_row, center_target[0] - rot_img.shape[0] / 2)
+            min_col = min(min_col, center_target[1] - rot_img.shape[1] / 2)
+            max_row = max(max_row, center_target[0] + rot_img.shape[0] / 2)
+            max_col = max(max_col, center_target[1] + rot_img.shape[1] / 2)
 
-        offset = np.array((min_row, min_col)) + 2
-        size = (int(round(max_row - min_row)) + 4, int(round(max_col - min_col)) + 4, 3)
+        offset = np.array((min_row, min_col))
+        size = (int(round(max_row - min_row)), int(round(max_col - min_col)), 3)
         img = np.ones(size)
 
         for piece_img, center_pos in zip(piece_imgs, center_positions):
@@ -180,8 +181,22 @@ class Cluster:
                 top_left[0] : top_left[0] + piece_img.shape[0],
                 top_left[1] : top_left[1] + piece_img.shape[1],
             ]
+            if img_crop.shape != piece_img.shape:
+                piece_img = piece_img[: img_crop.shape[0], : img_crop.shape[1]]
             img[
                 top_left[0] : top_left[0] + piece_img.shape[0],
                 top_left[1] : top_left[1] + piece_img.shape[1],
             ] = np.where(piece_img < 0, img_crop, piece_img)
+
+        if draw_contours:
+            contours = [
+                value[1].apply(value[0].contour) for value in self._pieces.values()
+            ]
+            contours = (np.concatenate(contours) - offset).round().astype(int)
+            contours = contours[(contours[:, 0] < size[0]) & (contours[:, 1] < size[1])]
+            img_contour = np.ones((size[0], size[1]))
+            img_contour = draw_contour(contours, img_contour)
+            img = np.where(
+                img_contour[:, :, np.newaxis] == 0, np.array([[[1, 0, 0]]]), img
+            )
         return img
