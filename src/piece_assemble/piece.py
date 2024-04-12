@@ -33,12 +33,13 @@ class Piece:
         # For averaging, use eroded mask for better behavior near contours
         mask_eroded = erosion(self.mask.astype(bool), diamond(1))
         footprint = disk(img_mean_window_r)
+        img_int = (self.img * 255).astype("uint8")
         if len(self.img.shape) == 3:
             self.img_avg = (
                 np.stack(
                     [
-                        rank.mean(self.img[:, :, channel], footprint, mask=mask_eroded)
-                        for channel in range(self.img.shape[2])
+                        rank.mean(img_int[:, :, channel], footprint, mask=mask_eroded)
+                        for channel in range(3)
                     ],
                     axis=2,
                 )
