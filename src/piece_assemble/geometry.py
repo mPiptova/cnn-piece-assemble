@@ -386,6 +386,16 @@ class Transformation:
         )
 
 
+def get_common_contour_idxs(
+    contour1: Points, contour2: Points, tol: float = 10
+) -> tuple[np.ndarray, np.ndarray]:
+    tree1 = KDTree(contour1)
+    distances, points = tree1.query(contour2, k=1)
+    # Return indexes of points which are close enough
+    close_mask = distances < tol
+    return points[close_mask], np.where(close_mask)[0]
+
+
 def get_common_contour(
     contour1: Points, contour2: Points, tol: float = 10
 ) -> tuple[Points, Points]:
