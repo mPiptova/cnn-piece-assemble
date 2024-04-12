@@ -59,6 +59,9 @@ class Piece:
         self.segments, self.descriptor = self.descriptor_extractor.extract(
             self.contour, self.img_avg
         )
+        self.contour_segment_idxs = np.full(len(self.contour), -1)
+        for i, segment in enumerate(self.segments):
+            self.contour_segment_idxs[segment.interval[0] : segment.interval[1]] = i
 
     def get_segment_lengths(self) -> np.ndarray:
         def arc_len(arc: ApproximatingArc):
