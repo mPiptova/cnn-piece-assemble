@@ -7,5 +7,7 @@ def longest_continuous_subsequence(sequence: np.array, max_diff=2) -> np.array:
     diff = mask[1:] - mask[:-1]
     starts = np.where(diff == 1)[0]
     ends = np.where(diff == -1)[0]
+    if len(starts) == 0:
+        return np.array([])
     idx_max = (ends - starts).argmax()
     return sequence[starts[idx_max] : ends[idx_max]]
