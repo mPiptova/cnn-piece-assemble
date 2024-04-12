@@ -157,7 +157,7 @@ class Cluster:
             h = rot_img.shape[0] - 2 * row
             w = rot_img.shape[1] - 2 * col
             rot_img = rot_img[
-                row : rot_img.shape[0] - row, col : rot_img.shape[1] - row
+                row : rot_img.shape[0] - row, col : rot_img.shape[1] - col
             ]
 
             piece_imgs.append(rot_img)
