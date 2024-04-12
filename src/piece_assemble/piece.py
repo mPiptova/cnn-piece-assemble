@@ -4,7 +4,7 @@ import numpy as np
 from shapely import geometry
 from skimage.filters import rank
 from skimage.measure import approximate_polygon
-from skimage.morphology import diamond, disk, erosion
+from skimage.morphology import diamond, dilation, disk, erosion
 
 from piece_assemble.contours import extract_contours, smooth_contours
 from piece_assemble.descriptor import DescriptorExtractor
@@ -48,7 +48,9 @@ class Piece:
         else:
             self.img_avg = rank.mean(self.img, footprint, mask=mask_eroded)
 
-        contour = extract_contours(mask)[0]
+        # Dilate mask to compensate for natural erosion of pieces
+        contour = extract_contours(dilation(self.mask, diamond(1)))[0]
+
         self.contour = smooth_contours(contour, sigma)
         self.polygon = geometry.Polygon(
             approximate_polygon(self.contour, polygon_approximation_tolerance)
