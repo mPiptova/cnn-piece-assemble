@@ -10,8 +10,13 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
-from piece_assemble.geometry import Transformation, get_common_contour_length
+from piece_assemble.geometry import (
+    Transformation,
+    get_common_contour_idxs,
+    get_common_contour_length,
+)
 from piece_assemble.piece import Piece
+from piece_assemble.utils import longest_continuous_subsequence
 from piece_assemble.visualization import draw_contour
 
 
@@ -134,6 +139,40 @@ class Cluster:
         return np.array(
             [True if piece_id in self.piece_ids else False for piece_id in all_ids]
         )
+
+    def get_match_complexity(self, key1: str, key2: str):
+        piece1 = self.descriptors[key1]
+        piece2 = self.descriptors[key2]
+        transformation1 = self.transformations[key1]
+        transformation2 = self.transformations[key2]
+
+        _, idxs2 = get_common_contour_idxs(
+            transformation1.apply(piece1.contour),
+            transformation2.apply(piece2.contour),
+            5,
+        )
+        if len(idxs2) == 0:
+            return 0
+
+        idxs2 = longest_continuous_subsequence(np.unique(idxs2))
+
+        unique_arc_idxs1 = np.unique(
+            piece2.contour_segment_idxs[idxs2], return_counts=True
+        )
+        arc_idxs2 = [
+            idx
+            for idx, count in zip(*unique_arc_idxs1)
+            if idx != -1 and count > 0.8 * len(piece2.segments[idx])
+        ]
+        return len(arc_idxs2)
+
+    @cached_property
+    def complexity(self):
+        total_complexity = 0
+        for key1, key2 in combinations(self.piece_ids, 2):
+            total_complexity += self.get_match_complexity(key1, key2)
+
+        return total_complexity
 
     def draw(self, draw_contours: bool = False) -> np.ndarray:
         min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
