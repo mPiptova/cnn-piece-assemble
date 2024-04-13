@@ -100,7 +100,7 @@ class Cluster:
             [p.intersection(polygon).area / min(p.area, polygon.area) for p in polygons]
         )
 
-    def merge(self, other: Cluster) -> Cluster:
+    def merge(self, other: Cluster, self_intersection_tol=0.04) -> Cluster:
         common_keys = self.piece_ids.intersection(other.piece_ids)
 
         if len(common_keys) == 0:
@@ -121,6 +121,10 @@ class Cluster:
         new_pieces = cluster1._pieces.copy()
         new_pieces.update(cluster2._pieces)
         new_cluster = Cluster(new_pieces)
+
+        if new_cluster.self_intersection > self_intersection_tol:
+            # TODO: more meaningful error
+            raise ValueError
 
         return new_cluster
 
