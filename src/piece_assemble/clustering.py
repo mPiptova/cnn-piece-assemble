@@ -24,6 +24,40 @@ from piece_assemble.utils import longest_continuous_subsequence
 from piece_assemble.visualization import draw_contour
 
 
+class ClusterScorer:
+    def __init__(
+        self,
+        w_convexity: float,
+        w_complexity: float,
+        w_color_dist: float,
+        w_dist: float,
+        w_hole_area: float,
+        min_allowed_hole_size,
+    ) -> None:
+        self.w_convexity = w_convexity
+        self.w_complexity = w_complexity
+        self.w_color_dist = w_color_dist
+        self.w_dist = w_dist
+        self.w_hole_area = w_hole_area
+        self.min_allowed_hole_size = min_allowed_hole_size
+
+    def __call__(self, cluster: Cluster) -> float:
+        convexity_score = cluster.convexity * self.w_convexity
+        complexity_score = (
+            cluster.complexity * cluster.avg_neighbor_count * self.w_complexity
+        )
+        color_score = -cluster.color_dist * self.w_color_dist
+        dist_score = -cluster.dist * self.w_dist
+        hole_score = (
+            0
+            if cluster.max_hole_area > self.min_allowed_hole_size
+            else -cluster.max_hole_area * self.w_hole_size
+        )
+        return (
+            convexity_score + complexity_score + color_score + dist_score + hole_score
+        )
+
+
 class Cluster:
     def __init__(
         self,
