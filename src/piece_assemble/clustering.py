@@ -14,6 +14,7 @@ from skimage.transform import rotate
 
 from piece_assemble.geometry import (
     Transformation,
+    get_common_contour,
     get_common_contour_idxs,
     get_common_contour_length,
 )
@@ -80,6 +81,19 @@ class Cluster:
         new_cluster = Cluster(new_pieces)
         new_cluster.border_length = self.border_length
         return new_cluster
+
+    @cached_property
+    def dist(self) -> float:
+        dists = []
+        for key1, key2 in combinations(self.piece_ids, 2):
+            b1, b2 = get_common_contour(
+                self.transformations[key1].apply(self.descriptors[key1].contour),
+                self.transformations[key2].apply(self.descriptors[key2].contour),
+                4,
+            )
+            dists.append(np.linalg.norm(b1 - b2, axis=1))
+        dists = np.concatenate(dists)
+        return np.mean(dists)
 
     @cached_property
     def self_intersection(self) -> float:
