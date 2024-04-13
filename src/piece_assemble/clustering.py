@@ -154,8 +154,12 @@ class Cluster:
         if len(idxs2) == 0:
             return 0
 
+        idxs2 = np.concatenate((idxs2, idxs2 + len(piece2.contour)))
         idxs2 = longest_continuous_subsequence(np.unique(idxs2))
+        idxs2 = idxs2 % len(piece2.contour)
 
+        if len(idxs2) == 0:
+            return 0
         unique_arc_idxs1 = np.unique(
             piece2.contour_segment_idxs[idxs2], return_counts=True
         )
@@ -164,6 +168,8 @@ class Cluster:
             for idx, count in zip(*unique_arc_idxs1)
             if idx != -1 and count > 0.8 * len(piece2.segments[idx])
         ]
+        if len(arc_idxs2) <= 2:
+            return 0
         return len(arc_idxs2)
 
     @cached_property
