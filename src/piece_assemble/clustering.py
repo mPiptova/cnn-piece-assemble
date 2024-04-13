@@ -21,11 +21,16 @@ from piece_assemble.visualization import draw_contour
 
 
 class Cluster:
-    def __init__(self, pieces: dict[str, tuple[Piece, Transformation]]) -> None:
+    def __init__(
+        self,
+        pieces: dict[str, tuple[Piece, Transformation]],
+        parents: list[Cluster] = None,
+    ) -> None:
         self._pieces = pieces
 
         self.descriptors = {key: desc for key, (desc, _) in pieces.items()}
         self.transformations = {key: t for key, (_, t) in pieces.items()}
+        self.parents = parents
 
     @cached_property
     def border_length(self) -> int:
@@ -120,7 +125,7 @@ class Cluster:
 
         new_pieces = cluster1._pieces.copy()
         new_pieces.update(cluster2._pieces)
-        new_cluster = Cluster(new_pieces)
+        new_cluster = Cluster(new_pieces, parents=[cluster1, cluster2])
 
         if new_cluster.self_intersection > self_intersection_tol:
             # TODO: more meaningful error
