@@ -106,6 +106,12 @@ class Cluster:
             [p.intersection(polygon).area / min(p.area, polygon.area) for p in polygons]
         )
 
+    @cached_property
+    def polygon_union(self) -> Polygon:
+        polygons = self.transformed_polygons
+        polygons = [polygon.buffer(1) for polygon in polygons]
+        return unary_union(polygons)
+
     def merge(self, other: Cluster, self_intersection_tol=0.04) -> Cluster:
         common_keys = self.piece_ids.intersection(other.piece_ids)
 
@@ -141,8 +147,7 @@ class Cluster:
 
     @cached_property
     def convexity(self) -> float:
-        polygons = self.transformed_polygons
-        union_polygon = unary_union(polygons)
+        union_polygon = self.polygon_union
         return union_polygon.area / union_polygon.convex_hull.area
 
     def indicator(self, all_ids):
