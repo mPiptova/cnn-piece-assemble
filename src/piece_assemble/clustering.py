@@ -6,6 +6,7 @@ from itertools import combinations
 import cv2 as cv
 import numpy as np
 import shapely
+from more_itertools import flatten
 from scipy.ndimage import gaussian_filter1d
 from shapely import Polygon
 from shapely.ops import unary_union
@@ -111,6 +112,23 @@ class Cluster:
         polygons = self.transformed_polygons
         polygons = [polygon.buffer(1) for polygon in polygons]
         return unary_union(polygons)
+
+    @cached_property
+    def max_hole_area(self):
+        union = self.polygon_union
+
+        if union.geom_type == "Polygon":
+            polygons = [union]
+        else:
+            polygons = union.geoms
+        hole_areas = [
+            [Polygon(hole.coords).area for hole in polygon.interiors]
+            for polygon in polygons
+        ]
+        hole_areas = list(flatten(hole_areas))
+        if len(hole_areas) == 0:
+            return 0
+        return np.max(hole_areas)
 
     def merge(self, other: Cluster, self_intersection_tol=0.04) -> Cluster:
         common_keys = self.piece_ids.intersection(other.piece_ids)
