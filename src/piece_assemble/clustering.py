@@ -62,6 +62,7 @@ class Cluster:
     def __init__(
         self,
         pieces: dict[str, tuple[Piece, Transformation]],
+        scorer: ClusterScorer,
         parents: list[Cluster] = None,
     ) -> None:
         self._pieces = pieces
@@ -69,6 +70,10 @@ class Cluster:
         self.descriptors = {key: desc for key, (desc, _) in pieces.items()}
         self.transformations = {key: t for key, (_, t) in pieces.items()}
         self.parents = parents
+
+    @cached_property
+    def score(self) -> float:
+        return self.scorer(self)
 
     @cached_property
     def border(self) -> Points:
@@ -212,11 +217,6 @@ class Cluster:
             raise ValueError
 
         return new_cluster
-
-    @cached_property
-    def score(self) -> float:
-        # TODO: More sensible score
-        return self.border_length * (self.convexity**5)
 
     @cached_property
     def convexity(self) -> float:
