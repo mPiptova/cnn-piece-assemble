@@ -224,6 +224,23 @@ class Cluster:
             return 0.000001
         return np.max(dists)
 
+    @cached_property
+    def neighbor_matrix(self):
+        piece_ids = list(self.piece_ids)
+        matrix = np.full([len(self.descriptors)] * 2, False)
+        for i1, i2 in combinations(range(len(piece_ids)), 2):
+            complexity = self.get_match_complexity(piece_ids[i1], piece_ids[i2])
+            if complexity == 0:
+                continue
+            matrix[i1, i2] = True
+            matrix[i2, i1] = True
+
+        return matrix
+
+    @cached_property
+    def avg_neighbor_count(self):
+        return np.sum(self.neighbor_matrix, axis=0).mean()
+
     def draw(self, draw_contours: bool = False) -> np.ndarray:
         min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
 
