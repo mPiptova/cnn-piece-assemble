@@ -6,6 +6,7 @@ from itertools import combinations
 import cv2 as cv
 import numpy as np
 import shapely
+from scipy.ndimage import gaussian_filter1d
 from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
@@ -188,6 +189,40 @@ class Cluster:
             total_complexity += self.get_match_complexity(key1, key2)
 
         return total_complexity
+
+    def get_match_color_dist(self, key1: str, key2: str):
+        piece1 = self.descriptors[key1]
+        piece2 = self.descriptors[key2]
+        border_idxs1, border_idxs2 = get_common_contour_idxs(
+            self.transformations[key1].apply(piece1.contour),
+            self.transformations[key2].apply(piece2.contour),
+            5,
+        )
+        if len(border_idxs1) == 0:
+            return -1
+        border1 = piece1.contour[border_idxs1].round().astype(int)
+        border2 = piece2.contour[border_idxs2].round().astype(int)
+
+        values1 = piece1.img_avg[border1[:, 0], border1[:, 1]]
+        values2 = piece2.img_avg[border2[:, 0], border2[:, 1]]
+
+        values1 = gaussian_filter1d(values1, 10, axis=0)
+        values2 = gaussian_filter1d(values2, 10, axis=0)
+
+        values_diff = np.abs(values1 - values2)
+        return np.mean(values_diff * values_diff)
+
+    @cached_property
+    def color_dist(self):
+        dists = []
+        for key1, key2 in combinations(self.piece_ids, 2):
+            s = self.get_match_color_dist(key1, key2)
+            if s != -1:
+                dists.append(s)
+
+        if len(dists) == 0:
+            return 0.000001
+        return np.max(dists)
 
     def draw(self, draw_contours: bool = False) -> np.ndarray:
         min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
