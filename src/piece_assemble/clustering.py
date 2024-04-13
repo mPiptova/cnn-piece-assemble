@@ -19,6 +19,7 @@ from piece_assemble.geometry import (
     get_common_contour_length,
 )
 from piece_assemble.piece import Piece
+from piece_assemble.types import Points
 from piece_assemble.utils import longest_continuous_subsequence
 from piece_assemble.visualization import draw_contour
 
@@ -36,15 +37,21 @@ class Cluster:
         self.parents = parents
 
     @cached_property
-    def border_length(self) -> int:
-        total_length = 0
+    def border(self) -> Points:
+        border = []
         for key1, key2 in combinations(self.piece_ids, 2):
-            total_length += get_common_contour_length(
+            b1, b2 = get_common_contour(
                 self.transformations[key1].apply(self.descriptors[key1].contour),
                 self.transformations[key2].apply(self.descriptors[key2].contour),
                 4,
             )
-        return total_length
+            border.append((b1 + b2) / 2)
+
+        return np.concatenate(border)
+
+    @cached_property
+    def border_length(self) -> int:
+        return len(self.border)
 
     @property
     def piece_ids(self) -> set[str]:
