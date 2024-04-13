@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pandas as pd
 from scipy.spatial import KDTree
 from shapely import transform
 
@@ -78,3 +79,49 @@ class Match:
             self.key2: (self.piece2, Transformation.identity()),
         }
         return Cluster(pieces)
+
+
+class Matches:
+    def __init__(self, matches: list[Match]) -> None:
+        columns = ["key1", "key2", "dist", "match"]
+
+        def match_to_row(match: Match):
+            return (match.key1, match.key2, match.dist, match)
+
+        rows = [match_to_row(match) for match in matches]
+        matches_df = pd.DataFrame(rows, columns=columns)
+        self._df = matches_df.sort_values("dist").reset_index()
+
+    def _update_df(self):
+        self._df = self._df[
+            self._df["match"].apply(lambda m: m.valid or m.valid is None)
+        ]
+        self._df["dist"] = self._df["match"].apply(lambda m: m.dist)
+        self._df = self._df.sort_values("dist", ignore_index=True).reset_index()
+
+    def sample(self, n: int) -> list[Match]:
+        samples = self._df.sample(len(self._df), weights=1 / (self._df["dist"] ** 2))
+        matches = []
+        for _, row in samples.iterrows():
+            if len(matches) == n:
+                break
+            match = row["match"]
+            match.verify(2)
+            if match.valid:
+                matches.append(match)
+
+        self._update_df
+        return matches
+
+    def head(self, n: int) -> list[Match]:
+        matches = []
+        for _, row in self._df.iterrows():
+            if len(matches) == n:
+                break
+            match = row["match"]
+            match.verify(2)
+            if match.valid:
+                matches.append(match)
+
+        self._update_df
+        return matches

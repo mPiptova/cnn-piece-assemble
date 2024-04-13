@@ -3,7 +3,6 @@ from __future__ import annotations
 from itertools import combinations
 
 import numpy as np
-import pandas as pd
 
 from piece_assemble.clustering import Cluster
 from piece_assemble.descriptor import DescriptorExtractor
@@ -70,18 +69,6 @@ def find_all_matches(
     for desc1, desc2 in combinations(pieces, 2):
         matches.extend(find_matches(desc1, desc2, descriptor_extractor))
     return matches
-
-
-def matches_to_df(matches: list[Match]) -> pd.DataFrame:
-    columns = ["key1", "key2", "dist", "match"]
-
-    def match_to_row(match: Match):
-        return (match.key1, match.key2, match.dist, match)
-
-    rows = [match_to_row(match) for match in matches]
-    matches_df = pd.DataFrame(rows, columns=columns)
-    matches_df = matches_df.sort_values("dist").reset_index()
-    return matches_df
 
 
 def matches_to_clusters(matches: list[Match]) -> list[Cluster]:
