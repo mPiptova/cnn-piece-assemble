@@ -16,7 +16,6 @@ from piece_assemble.geometry import (
     Transformation,
     get_common_contour,
     get_common_contour_idxs,
-    get_common_contour_length,
 )
 from piece_assemble.piece import Piece
 from piece_assemble.types import Points
@@ -122,24 +121,6 @@ class Cluster:
         new_cluster = Cluster(self._pieces.copy())
         new_cluster.border_length = self.border_length
         return new_cluster
-
-    def add(self, descriptor: Piece, transformation: Transformation) -> None:
-        if descriptor.name in self.piece_ids:
-            # TODO: Create more meaningful error
-            raise ValueError()
-
-        self._pieces[descriptor.name] = (descriptor, transformation)
-        self.descriptors[descriptor.name] = descriptor
-        self.transformations[descriptor.name] = transformation
-
-        for key in self.piece_ids:
-            if key == descriptor.name:
-                continue
-            self.border_length += get_common_contour_length(
-                descriptor.contour, self.descriptors[key].contour
-            )
-
-        # TODO: Update self_intersection and score
 
     def transform(self, transformation: Transformation) -> Cluster:
         new_pieces = {
