@@ -12,10 +12,12 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
+from piece_assemble.config import tol_dist
 from piece_assemble.geometry import (
     Transformation,
     get_common_contour,
     get_common_contour_idxs,
+    icp,
 )
 from piece_assemble.piece import Piece
 from piece_assemble.types import Points
@@ -229,6 +231,49 @@ class Cluster:
             )
 
         return new_cluster
+
+    def finetune_transformations(self, num_iters: int = 3):
+        """Improve transformations using ICP algorithm.
+
+        Helps preventing cumulation of small errors in large clusters.
+
+        Parameters
+        ----------
+        num_iters
+            Number of iterations. Defines how many times a position of each cluster
+            will be adjusted.
+
+        Returns
+        -------
+        New finetuned cluster.
+        """
+        contour_dict = {
+            key: t.apply(piece.contour) for key, (piece, t) in self._pieces.items()
+        }
+
+        new_pieces = self._pieces.copy()
+        for _ in range(num_iters):
+            for piece_id in self.piece_ids:
+                piece_contour = contour_dict[piece_id]
+                other_contours = np.concatenate(
+                    [
+                        contour
+                        for _id, contour in contour_dict.items()
+                        if _id != piece_id
+                    ]
+                )
+
+                new_transform = icp(
+                    piece_contour, other_contours, Transformation.identity(), tol_dist
+                )
+                new_pieces[piece_id] = (
+                    new_pieces[piece_id][0],
+                    new_pieces[piece_id][1].compose(new_transform),
+                )
+                new_contour = new_transform.apply(piece_contour)
+                contour_dict[piece_id] = new_contour
+
+        return Cluster(new_pieces, self.scorer, self.parents)
 
     @cached_property
     def convexity(self) -> float:
