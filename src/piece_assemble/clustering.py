@@ -12,7 +12,7 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
-from piece_assemble.config import tol_dist
+from piece_assemble.config import tol_dist, w_border_length
 from piece_assemble.geometry import (
     Transformation,
     get_common_contour,
@@ -54,8 +54,14 @@ class ClusterScorer:
             if cluster.max_hole_area > self.min_allowed_hole_size
             else -cluster.max_hole_area * self.w_hole_size
         )
+        border_length_score = cluster.border_length * w_border_length
         return (
-            convexity_score + complexity_score + color_score + dist_score + hole_score
+            convexity_score
+            + complexity_score
+            + color_score
+            + dist_score
+            + hole_score
+            + border_length_score
         )
 
 
