@@ -6,7 +6,7 @@ import pandas as pd
 from scipy.spatial import KDTree
 from shapely import transform
 
-from piece_assemble.clustering import Cluster
+from piece_assemble.clustering import Cluster, ClusterScorer, TransformedPiece
 from piece_assemble.geometry import Transformation, icp
 from piece_assemble.matching.utils import get_initial_transformation
 from piece_assemble.piece import Piece
@@ -73,12 +73,19 @@ class Match:
         self.transformation = transformation
         self.dist = nearest_dist[near_mask].mean() / (10 * length)
 
-    def to_cluster(self) -> Cluster:
+    def to_cluster(
+        self, scorer: ClusterScorer, border_dist_tol, self_intersection_tol
+    ) -> Cluster:
         pieces = {
-            self.key1: (self.piece1, self.transformation),
-            self.key2: (self.piece2, Transformation.identity()),
+            self.key1: TransformedPiece(self.piece1, self.transformation),
+            self.key2: TransformedPiece(self.piece2, Transformation.identity()),
         }
-        return Cluster(pieces)
+        return Cluster(
+            pieces,
+            scorer=scorer,
+            border_dist_tol=border_dist_tol,
+            self_intersection_tol=self_intersection_tol,
+        )
 
 
 class Matches:

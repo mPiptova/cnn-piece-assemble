@@ -52,7 +52,7 @@ class ClusterScorer:
         hole_score = (
             0
             if cluster.max_hole_area > self.min_allowed_hole_size
-            else -cluster.max_hole_area * self.w_hole_size
+            else -cluster.max_hole_area * self.w_hole_area
         )
         border_length_score = cluster.border_length * w_border_length
         return (
@@ -87,17 +87,24 @@ class SelfIntersectionError(MergeError):
     """Exception raised when the intersection of the cluster is too high."""
 
 
+class TransformedPiece:
+    def __init__(self, piece: Piece, transformation: Transformation) -> None:
+        self.piece = piece
+        self.transformation = transformation
+
+    def transform(self, transformation: Transformation) -> TransformedPiece:
+        return TransformedPiece(self.piece, self.transformation.compose(transformation))
+
+
 class Cluster:
     def __init__(
         self,
-        pieces: dict[str, tuple[Piece, Transformation]],
+        pieces: dict[str, TransformedPiece],
         scorer: ClusterScorer,
         parents: list[Cluster] = None,
     ) -> None:
-        self._pieces = pieces
+        self.pieces = pieces
 
-        self.descriptors = {key: desc for key, (desc, _) in pieces.items()}
-        self.transformations = {key: t for key, (_, t) in pieces.items()}
         self.parents = parents
         self.scorer = scorer
 
@@ -124,17 +131,16 @@ class Cluster:
 
     @property
     def piece_ids(self) -> set[str]:
-        return set(self._pieces.keys())
+        return set(self.pieces.keys())
 
     def copy(self) -> Cluster:
-        new_cluster = Cluster(self._pieces.copy(), self.scorer, self.parents)
+        new_cluster = Cluster(self.pieces.copy(), self.scorer, self.parents)
         new_cluster.border_length = self.border_length
         return new_cluster
 
     def transform(self, transformation: Transformation) -> Cluster:
         new_pieces = {
-            key: (desc, t.compose(transformation))
-            for key, (desc, t) in self._pieces.items()
+            key: piece.transform(transformation) for key, piece in self.pieces.items()
         }
         new_cluster = Cluster(new_pieces, self.scorer, parents=[self])
         new_cluster.border_length = self.border_length
@@ -157,10 +163,7 @@ class Cluster:
 
     @cached_property
     def self_intersection(self) -> float:
-        polygons = [
-            shapely.transform(desc.polygon, lambda pol: t.apply(pol))
-            for desc, t in self._pieces.values()
-        ]
+        polygons = self.transformed_polygons
         return max(
             [
                 p1.intersection(p2).area / min(p1.area, p2.area)
@@ -171,8 +174,10 @@ class Cluster:
     @property
     def transformed_polygons(self) -> list[Polygon]:
         return [
-            shapely.transform(desc.polygon, lambda pol: t.apply(pol))
-            for desc, t in self._pieces.values()
+            shapely.transform(
+                piece.piece.polygon, lambda pol: piece.transformation.apply(pol)
+            )
+            for piece in self.pieces.values()
         ]
 
     def intersection(self, polygon: Polygon) -> float:
@@ -230,20 +235,20 @@ class Cluster:
             )
 
         common_key = common_keys.pop()
-        cluster1 = self.transform(self.transformations[common_key].inverse())
-        cluster2 = other.transform(other.transformations[common_key].inverse())
+        cluster1 = self.transform(self.pieces[common_key].transformation.inverse())
+        cluster2 = other.transform(other.pieces[common_key].transformation.inverse())
 
         for key in common_keys:
-            if not cluster1.transformations[key].is_close(
-                cluster2.transformations[key]
+            if not cluster1.pieces[key].transformation.is_close(
+                cluster2.pieces[key].transformation
             ):
                 raise ConflictingTransformationsError(
-                    f"Transformations {cluster1.transformations[key]} and "
-                    f"{cluster2.transformations[key]} are not close."
+                    f"Transformations {cluster1.pieces[key].transformation} and "
+                    f"{cluster2.piece[key].transformation} are not close."
                 )
 
-        new_pieces = cluster1._pieces.copy()
-        new_pieces.update(cluster2._pieces)
+        new_pieces = cluster1.pieces.copy()
+        new_pieces.update(cluster2.pieces)
         new_cluster = Cluster(
             new_pieces, parents=[cluster1, cluster2], scorer=self.scorer
         )
@@ -279,11 +284,13 @@ class Cluster:
             return False
 
         common_key = common_keys.pop()
-        cluster1 = self.transform(self.transformations[common_key].inverse())
-        cluster2 = other.transform(other.transformations[common_key].inverse())
+        cluster1 = self.transform(self.pieces[common_key].transformation.inverse())
+        cluster2 = other.transform(other.pieces[common_key].transformation.inverse())
 
         return all(
-            cluster1.transformations[key].is_close(cluster2.transformations[key])
+            cluster1.pieces[key].transformation.is_close(
+                cluster2.pieces[key].transformation
+            )
             for key in common_keys
         )
 
@@ -303,10 +310,11 @@ class Cluster:
         New finetuned cluster.
         """
         contour_dict = {
-            key: t.apply(piece.contour) for key, (piece, t) in self._pieces.items()
+            key: piece.transformation.apply(piece.piece.contour)
+            for key, piece in self.pieces.items()
         }
 
-        new_pieces = self._pieces.copy()
+        new_pieces = self.pieces.copy()
         for _ in range(num_iters):
             for piece_id in self.piece_ids:
                 piece_contour = contour_dict[piece_id]
@@ -321,10 +329,8 @@ class Cluster:
                 new_transform = icp(
                     piece_contour, other_contours, Transformation.identity(), tol_dist
                 )
-                new_pieces[piece_id] = (
-                    new_pieces[piece_id][0],
-                    new_pieces[piece_id][1].compose(new_transform),
-                )
+                new_pieces[piece_id] = new_pieces[piece_id].transform(new_transform)
+
                 new_contour = new_transform.apply(piece_contour)
                 contour_dict[piece_id] = new_contour
 
@@ -355,10 +361,10 @@ class Cluster:
                 key1,
             ) in matches_border_dict.keys():
                 continue
-            piece1 = self.descriptors[key1]
-            piece2 = self.descriptors[key2]
-            transformation1 = self.transformations[key1]
-            transformation2 = self.transformations[key2]
+            piece1 = self.pieces[key1].piece
+            piece2 = self.pieces[key2].piece
+            transformation1 = self.pieces[key1].transformation
+            transformation2 = self.pieces[key2].transformation
             idxs1, idxs2 = get_common_contour_idxs(
                 transformation1.apply(piece1.contour),
                 transformation2.apply(piece2.contour),
@@ -386,11 +392,11 @@ class Cluster:
         if idxs1 is None:
             return None, None
 
-        piece1 = self.descriptors[key1]
-        piece2 = self.descriptors[key2]
+        piece1 = self.pieces[key1].piece
+        piece2 = self.pieces[key2].piece
 
-        coords1 = self.transformations[key1].apply(piece1.contour[idxs1])
-        coords2 = self.transformations[key2].apply(piece2.contour[idxs2])
+        coords1 = self.pieces[key1].transformation.apply(piece1.contour[idxs1])
+        coords2 = self.pieces[key2].transformation.apply(piece2.contour[idxs2])
 
         return coords1, coords2
 
@@ -399,7 +405,7 @@ class Cluster:
         if idxs2 is None:
             return 0
 
-        piece2 = self.descriptors[key2]
+        piece2 = self.pieces[key2].piece
 
         idxs2 = np.concatenate((idxs2, idxs2 + len(piece2.contour)))
         idxs2 = longest_continuous_subsequence(np.unique(idxs2))
@@ -429,8 +435,8 @@ class Cluster:
         return total_complexity
 
     def get_match_color_dist(self, key1: str, key2: str):
-        piece1 = self.descriptors[key1]
-        piece2 = self.descriptors[key2]
+        piece1 = self.pieces[key1].piece
+        piece2 = self.pieces[key2].piece
 
         border_idxs1, border_idxs2 = self.get_match_border_idxs(key1, key2)
         if border_idxs1 is None:
@@ -463,7 +469,7 @@ class Cluster:
     @cached_property
     def neighbor_matrix(self):
         piece_ids = list(self.piece_ids)
-        matrix = np.full([len(self.descriptors)] * 2, False)
+        matrix = np.full([len(self.pieces)] * 2, False)
         for i1, i2 in combinations(range(len(piece_ids)), 2):
             complexity = self.get_match_complexity(piece_ids[i1], piece_ids[i2])
             if complexity == 0:
@@ -482,7 +488,9 @@ class Cluster:
 
         piece_imgs = []
         center_positions = []
-        for piece, transformation in self._pieces.values():
+        for piece in self.pieces.values():
+            transformation = piece.transformation
+            piece = piece.piece
             deg_angle = np.rad2deg(transformation.rotation_angle)
             rot_img = rotate(
                 np.where(piece.mask[:, :, np.newaxis], piece.img, -1),
@@ -534,7 +542,7 @@ class Cluster:
 
         if draw_contours:
             contours = [
-                value[1].apply(value[0].contour) for value in self._pieces.values()
+                value[1].apply(value[0].contour) for value in self.pieces.values()
             ]
             contours = (np.concatenate(contours) - offset).round().astype(int)
             contours = contours[(contours[:, 0] < size[0]) & (contours[:, 1] < size[1])]
