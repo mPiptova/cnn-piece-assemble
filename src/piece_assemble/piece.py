@@ -61,7 +61,11 @@ class Piece:
         )
         self.contour_segment_idxs = np.full(len(self.contour), -1)
         for i, segment in enumerate(self.segments):
-            self.contour_segment_idxs[segment.interval[0] : segment.interval[1]] = i
+            if segment.interval[0] < segment.interval[1]:
+                self.contour_segment_idxs[segment.interval[0] : segment.interval[1]] = i
+            else:
+                self.contour_segment_idxs[segment.interval[0] :] = i
+                self.contour_segment_idxs[: segment.interval[1]] = i
 
     def get_segment_lengths(self) -> np.ndarray:
         def arc_len(arc: ApproximatingArc):
