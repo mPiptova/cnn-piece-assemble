@@ -202,7 +202,25 @@ class Cluster:
             return 0
         return np.max(hole_areas)
 
-    def merge(self, other: Cluster, self_intersection_tol=0.04) -> Cluster:
+    def merge(
+        self, other: Cluster, self_intersection_tol=0.04, finetune_iters: int = 3
+    ) -> Cluster:
+        """Merge this cluster with another cluster.
+
+        Parameters
+        ----------
+        other
+            Cluster to be merged with.
+        finetune_iters
+            Number of finetuning iterations,
+            After merging, ICP is run on all clusters to prevent cumulation
+            of small errors.
+
+        Returns
+        -------
+        New merged cluster.
+
+        """
         common_keys = self.piece_ids.intersection(other.piece_ids)
 
         if len(common_keys) == 0:
@@ -229,6 +247,9 @@ class Cluster:
         new_cluster = Cluster(
             new_pieces, parents=[cluster1, cluster2], scorer=self.scorer
         )
+
+        if finetune_iters > 0:
+            new_cluster = new_cluster.finetune_transformations(3)
 
         if new_cluster.self_intersection > self_intersection_tol:
             raise SelfIntersectionError(
