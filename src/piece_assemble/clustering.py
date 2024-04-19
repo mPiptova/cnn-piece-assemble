@@ -232,6 +232,34 @@ class Cluster:
 
         return new_cluster
 
+    def can_be_merged(self, other: Cluster) -> Cluster:
+        """Checks whether two clusters can be merged.
+
+        Returns True if they share at least one piece and the relative position of
+        the shared pieces is the same (within some tolerance).
+
+        Parameters
+        ----------
+        other
+
+        Returns
+        -------
+        Whether this cluster can be merged with the other cluster.
+        """
+
+        common_keys = self.piece_ids.intersection(other.piece_ids)
+        if len(common_keys) == 0:
+            return False
+
+        common_key = common_keys.pop()
+        cluster1 = self.transform(self.transformations[common_key].inverse())
+        cluster2 = other.transform(other.transformations[common_key].inverse())
+
+        return all(
+            cluster1.transformations[key].is_close(cluster2.transformations[key])
+            for key in common_keys
+        )
+
     def finetune_transformations(self, num_iters: int = 3):
         """Improve transformations using ICP algorithm.
 
