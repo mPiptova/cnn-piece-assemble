@@ -4,7 +4,7 @@ from itertools import combinations
 
 import numpy as np
 
-from piece_assemble.cluster import Cluster
+from piece_assemble.clustering import Cluster
 from piece_assemble.descriptor import DescriptorExtractor
 from piece_assemble.matching.match import Match
 from piece_assemble.piece import Piece
