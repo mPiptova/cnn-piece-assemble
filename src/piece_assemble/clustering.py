@@ -58,6 +58,28 @@ class ClusterScorer:
         )
 
 
+class MergeError(Exception):
+    """Exception for errors during cluster merging."""
+
+    pass
+
+
+class DisjunctClustersError(MergeError):
+    """Exception raised when two disjunct clusters are merged."""
+
+    pass
+
+
+class ConflictingTransformationsError(MergeError):
+    """Exception raised when two clusters have conflicting transformations."""
+
+    pass
+
+
+class SelfIntersectionError(MergeError):
+    """Exception raised when the intersection of the cluster is too high."""
+
+
 class Cluster:
     def __init__(
         self,
@@ -194,8 +216,10 @@ class Cluster:
         common_keys = self.piece_ids.intersection(other.piece_ids)
 
         if len(common_keys) == 0:
-            # TODO: more meaningful error
-            raise ValueError
+            raise DisjunctClustersError(
+                f"Pieces {self.piece_ids} and {other.piece_ids} "
+                "have no common elements."
+            )
 
         common_key = common_keys.pop()
         cluster1 = self.transform(self.transformations[common_key].inverse())
@@ -205,16 +229,20 @@ class Cluster:
             if not cluster1.transformations[key].is_close(
                 cluster2.transformations[key]
             ):
-                # TODO: more meaningful error
-                raise ValueError()
+                raise ConflictingTransformationsError(
+                    f"Transformations {cluster1.transformations[key]} and "
+                    f"{cluster2.transformations[key]} are not close."
+                )
 
         new_pieces = cluster1._pieces.copy()
         new_pieces.update(cluster2._pieces)
         new_cluster = Cluster(new_pieces, parents=[cluster1, cluster2])
 
         if new_cluster.self_intersection > self_intersection_tol:
-            # TODO: more meaningful error
-            raise ValueError
+            raise SelfIntersectionError(
+                f"Self intersection {new_cluster.self_intersection} "
+                "is higher than tolerance {self_intersection_tol}"
+            )
 
         return new_cluster
 
