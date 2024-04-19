@@ -4,7 +4,7 @@ from itertools import combinations
 
 import numpy as np
 
-from piece_assemble.clustering import Cluster
+from piece_assemble.cluster import Cluster
 from piece_assemble.descriptor import DescriptorExtractor
 from piece_assemble.matching.match import Match
 from piece_assemble.piece import Piece
@@ -68,6 +68,7 @@ def find_all_matches(
     matches = []
     for desc1, desc2 in combinations(pieces, 2):
         matches.extend(find_matches(desc1, desc2, descriptor_extractor))
+    matches.sort(key=lambda match: match.dist)
     return matches
 
 
