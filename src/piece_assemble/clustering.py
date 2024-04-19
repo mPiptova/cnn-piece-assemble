@@ -12,7 +12,7 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
-from piece_assemble.config import tol_dist, w_border_length
+from piece_assemble.config import self_intersection_tol, tol_dist, w_border_length
 from piece_assemble.geometry import (
     Transformation,
     get_common_contour,
@@ -202,9 +202,7 @@ class Cluster:
             return 0
         return np.max(hole_areas)
 
-    def merge(
-        self, other: Cluster, self_intersection_tol=0.04, finetune_iters: int = 3
-    ) -> Cluster:
+    def merge(self, other: Cluster, finetune_iters: int = 3) -> Cluster:
         """Merge this cluster with another cluster.
 
         Parameters
