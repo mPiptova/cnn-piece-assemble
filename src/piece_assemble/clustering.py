@@ -12,13 +12,13 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
-from piece_assemble.config import self_intersection_tol, tol_dist, w_border_length
-from piece_assemble.geometry import (
-    Transformation,
-    get_common_contour,
-    get_common_contour_idxs,
-    icp,
+from piece_assemble.config import (
+    border_dist_tolerance,
+    self_intersection_tol,
+    tol_dist,
+    w_border_length,
 )
+from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
 from piece_assemble.piece import Piece
 from piece_assemble.types import Points
 from piece_assemble.utils import longest_continuous_subsequence
@@ -108,14 +108,14 @@ class Cluster:
     @cached_property
     def border(self) -> Points:
         border = []
-        for key1, key2 in combinations(self.piece_ids, 2):
-            b1, b2 = get_common_contour(
-                self.transformations[key1].apply(self.descriptors[key1].contour),
-                self.transformations[key2].apply(self.descriptors[key2].contour),
-                4,
-            )
+        for (key1, key2) in self.matches_border_idxs.keys():
+            b1, b2 = self.get_match_border_coordinates(key1, key2)
+            if b1 is None:
+                continue
             border.append((b1 + b2) / 2)
 
+        if len(border) == 0:
+            return []
         return np.concatenate(border)
 
     @cached_property
@@ -144,12 +144,14 @@ class Cluster:
     def dist(self) -> float:
         dists = []
         for key1, key2 in combinations(self.piece_ids, 2):
-            b1, b2 = get_common_contour(
-                self.transformations[key1].apply(self.descriptors[key1].contour),
-                self.transformations[key2].apply(self.descriptors[key2].contour),
-                4,
-            )
+            b1, b2 = self.get_match_border_coordinates(key1, key2)
+            if b1 is None:
+                continue
             dists.append(np.linalg.norm(b1 - b2, axis=1))
+
+        if len(dists) == 0:
+            return np.inf
+
         dists = np.concatenate(dists)
         return np.mean(dists)
 
@@ -338,19 +340,66 @@ class Cluster:
             [True if piece_id in self.piece_ids else False for piece_id in all_ids]
         )
 
-    def get_match_complexity(self, key1: str, key2: str):
+    @cached_property
+    def matches_border_idxs(self):
+        matches_border_dict = {}
+
+        if self.parents is not None:
+            for parent in self.parents:
+                matches_border_dict.update(parent.matches_border_idxs)
+
+        for key1, key2 in combinations(self.piece_ids, 2):
+
+            if (key1, key2) in matches_border_dict.keys() or (
+                key2,
+                key1,
+            ) in matches_border_dict.keys():
+                continue
+            piece1 = self.descriptors[key1]
+            piece2 = self.descriptors[key2]
+            transformation1 = self.transformations[key1]
+            transformation2 = self.transformations[key2]
+            idxs1, idxs2 = get_common_contour_idxs(
+                transformation1.apply(piece1.contour),
+                transformation2.apply(piece2.contour),
+                border_dist_tolerance,
+            )
+
+            if len(idxs1) == 0:
+                continue
+            matches_border_dict[(key1, key2)] = (idxs1, idxs2)
+
+        return matches_border_dict
+
+    def get_match_border_idxs(self, key1, key2):
+        if (key1, key2) in self.matches_border_idxs.keys():
+            idxs1, idxs2 = self.matches_border_idxs[(key1, key2)]
+        elif (key2, key1) in self.matches_border_idxs.keys():
+            idxs2, idxs1 = self.matches_border_idxs[(key2, key1)]
+        else:
+            return None, None
+
+        return idxs1, idxs2
+
+    def get_match_border_coordinates(self, key1, key2):
+        idxs1, idxs2 = self.get_match_border_idxs(key1, key2)
+        if idxs1 is None:
+            return None, None
+
         piece1 = self.descriptors[key1]
         piece2 = self.descriptors[key2]
-        transformation1 = self.transformations[key1]
-        transformation2 = self.transformations[key2]
 
-        _, idxs2 = get_common_contour_idxs(
-            transformation1.apply(piece1.contour),
-            transformation2.apply(piece2.contour),
-            5,
-        )
-        if len(idxs2) == 0:
+        coords1 = self.transformations[key1].apply(piece1.contour[idxs1])
+        coords2 = self.transformations[key2].apply(piece2.contour[idxs2])
+
+        return coords1, coords2
+
+    def get_match_complexity(self, key1: str, key2: str):
+        _, idxs2 = self.get_match_border_idxs(key1, key2)
+        if idxs2 is None:
             return 0
+
+        piece2 = self.descriptors[key2]
 
         idxs2 = np.concatenate((idxs2, idxs2 + len(piece2.contour)))
         idxs2 = longest_continuous_subsequence(np.unique(idxs2))
@@ -361,12 +410,13 @@ class Cluster:
         unique_arc_idxs1 = np.unique(
             piece2.contour_segment_idxs[idxs2], return_counts=True
         )
+
         arc_idxs2 = [
             idx
             for idx, count in zip(*unique_arc_idxs1)
-            if idx != -1 and count > 0.8 * len(piece2.segments[idx])
+            if idx != -1 and count > 0.7 * len(piece2.segments[idx])
         ]
-        if len(arc_idxs2) <= 2:
+        if len(arc_idxs2) <= 1:
             return 0
         return len(arc_idxs2)
 
@@ -381,13 +431,11 @@ class Cluster:
     def get_match_color_dist(self, key1: str, key2: str):
         piece1 = self.descriptors[key1]
         piece2 = self.descriptors[key2]
-        border_idxs1, border_idxs2 = get_common_contour_idxs(
-            self.transformations[key1].apply(piece1.contour),
-            self.transformations[key2].apply(piece2.contour),
-            5,
-        )
-        if len(border_idxs1) == 0:
+
+        border_idxs1, border_idxs2 = self.get_match_border_idxs(key1, key2)
+        if border_idxs1 is None:
             return -1
+
         border1 = piece1.contour[border_idxs1].round().astype(int)
         border2 = piece2.contour[border_idxs2].round().astype(int)
 
