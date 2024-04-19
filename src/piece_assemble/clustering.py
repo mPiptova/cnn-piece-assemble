@@ -91,6 +91,7 @@ class Cluster:
         self.descriptors = {key: desc for key, (desc, _) in pieces.items()}
         self.transformations = {key: t for key, (_, t) in pieces.items()}
         self.parents = parents
+        self.scorer = scorer
 
     @cached_property
     def score(self) -> float:
@@ -118,7 +119,7 @@ class Cluster:
         return set(self._pieces.keys())
 
     def copy(self) -> Cluster:
-        new_cluster = Cluster(self._pieces.copy())
+        new_cluster = Cluster(self._pieces.copy(), self.scorer, self.parents)
         new_cluster.border_length = self.border_length
         return new_cluster
 
@@ -127,7 +128,7 @@ class Cluster:
             key: (desc, t.compose(transformation))
             for key, (desc, t) in self._pieces.items()
         }
-        new_cluster = Cluster(new_pieces)
+        new_cluster = Cluster(new_pieces, self.scorer, parents=[self])
         new_cluster.border_length = self.border_length
         return new_cluster
 
@@ -217,7 +218,9 @@ class Cluster:
 
         new_pieces = cluster1._pieces.copy()
         new_pieces.update(cluster2._pieces)
-        new_cluster = Cluster(new_pieces, parents=[cluster1, cluster2])
+        new_cluster = Cluster(
+            new_pieces, parents=[cluster1, cluster2], scorer=self.scorer
+        )
 
         if new_cluster.self_intersection > self_intersection_tol:
             raise SelfIntersectionError(
