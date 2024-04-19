@@ -12,12 +12,6 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
-from piece_assemble.config import (
-    border_dist_tolerance,
-    self_intersection_tol,
-    tol_dist,
-    w_border_length,
-)
 from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
 from piece_assemble.piece import Piece
 from piece_assemble.types import Points
@@ -33,7 +27,8 @@ class ClusterScorer:
         w_color_dist: float,
         w_dist: float,
         w_hole_area: float,
-        min_allowed_hole_size,
+        min_allowed_hole_size: float,
+        w_border_length: float,
     ) -> None:
         self.w_convexity = w_convexity
         self.w_complexity = w_complexity
@@ -41,6 +36,7 @@ class ClusterScorer:
         self.w_dist = w_dist
         self.w_hole_area = w_hole_area
         self.min_allowed_hole_size = min_allowed_hole_size
+        self.w_border_length = w_border_length
 
     def __call__(self, cluster: Cluster) -> float:
         convexity_score = cluster.convexity * self.w_convexity
@@ -54,7 +50,7 @@ class ClusterScorer:
             if cluster.max_hole_area > self.min_allowed_hole_size
             else -cluster.max_hole_area * self.w_hole_area
         )
-        border_length_score = cluster.border_length * w_border_length
+        border_length_score = cluster.border_length * self.w_border_length
         return (
             convexity_score
             + complexity_score
@@ -102,11 +98,14 @@ class Cluster:
         pieces: dict[str, TransformedPiece],
         scorer: ClusterScorer,
         parents: list[Cluster] = None,
+        self_intersection_tol: float = 0.01,
+        border_dist_tol: float = 2,
     ) -> None:
         self.pieces = pieces
-
         self.parents = parents
         self.scorer = scorer
+        self.self_intersection_tol = self_intersection_tol
+        self.border_dist_tol = border_dist_tol
 
     @cached_property
     def score(self) -> float:
@@ -256,7 +255,7 @@ class Cluster:
         if finetune_iters > 0:
             new_cluster = new_cluster.finetune_transformations(3)
 
-        if new_cluster.self_intersection > self_intersection_tol:
+        if new_cluster.self_intersection > self.self_intersection_tol:
             raise SelfIntersectionError(
                 f"Self intersection {new_cluster.self_intersection} "
                 "is higher than tolerance {self_intersection_tol}"
@@ -327,7 +326,10 @@ class Cluster:
                 )
 
                 new_transform = icp(
-                    piece_contour, other_contours, Transformation.identity(), tol_dist
+                    piece_contour,
+                    other_contours,
+                    Transformation.identity(),
+                    self.border_dist_tol,
                 )
                 new_pieces[piece_id] = new_pieces[piece_id].transform(new_transform)
 
@@ -368,7 +370,7 @@ class Cluster:
             idxs1, idxs2 = get_common_contour_idxs(
                 transformation1.apply(piece1.contour),
                 transformation2.apply(piece2.contour),
-                border_dist_tolerance,
+                self.border_dist_tol,
             )
 
             if len(idxs1) == 0:
