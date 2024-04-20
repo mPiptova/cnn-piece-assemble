@@ -254,12 +254,15 @@ class Cluster:
         )
 
         if finetune_iters > 0:
-            new_cluster = new_cluster.finetune_transformations(3)
+            new_cluster = new_cluster.finetune_transformations(5)
 
-        if new_cluster.self_intersection > self.self_intersection_tol:
+        self_intersection_tol = self.self_intersection_tol * (
+            np.log2(len(new_cluster.pieces)) + 1
+        )
+        if new_cluster.self_intersection > self_intersection_tol:
             raise SelfIntersectionError(
                 f"Self intersection {new_cluster.self_intersection} "
-                "is higher than tolerance {self_intersection_tol}"
+                f"is higher than tolerance {self_intersection_tol}"
             )
 
         return new_cluster
