@@ -244,7 +244,7 @@ class Cluster:
             ):
                 raise ConflictingTransformationsError(
                     f"Transformations {cluster1.pieces[key].transformation} and "
-                    f"{cluster2.piece[key].transformation} are not close."
+                    f"{cluster2.pieces[key].transformation} are not close."
                 )
 
         new_pieces = cluster1.pieces.copy()
