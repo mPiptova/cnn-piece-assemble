@@ -12,6 +12,7 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
+from piece_assemble.contours import smooth_contours
 from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
 from piece_assemble.piece import Piece
 from piece_assemble.types import Points
@@ -402,31 +403,62 @@ class Cluster:
 
         return coords1, coords2
 
-    def get_match_complexity(self, key1: str, key2: str):
-        _, idxs2 = self.get_match_border_idxs(key1, key2)
+    def _get_match_longest_continuous_border(
+        self, key1: str, key2: str
+    ) -> tuple[Piece, np.ndarray]:
+        idxs1, idxs2 = self.get_match_border_idxs(key1, key2)
         if idxs2 is None:
-            return 0
+            return [], None
 
-        piece2 = self.pieces[key2].piece
+        def get_longest_continuous_idxs(idxs: np.ndarray, piece: Piece):
+            idxs = np.concatenate((idxs, idxs + len(piece.contour)))
+            idxs = longest_continuous_subsequence(np.unique(idxs))
+            return idxs % len(piece.contour)
 
-        idxs2 = np.concatenate((idxs2, idxs2 + len(piece2.contour)))
-        idxs2 = longest_continuous_subsequence(np.unique(idxs2))
-        idxs2 = idxs2 % len(piece2.contour)
+        idxs1 = get_longest_continuous_idxs(idxs1, self.pieces[key1].piece)
+        idxs2 = get_longest_continuous_idxs(idxs2, self.pieces[key2].piece)
 
-        if len(idxs2) == 0:
-            return 0
+        if len(idxs1) > len(idxs2):
+            return idxs1, self.pieces[key1].piece
+        return idxs2, self.pieces[key2].piece
+
+    # TODO: This two functions can be somewhere else
+    def _get_segment_count(self, idxs: np.ndarray, piece: Piece) -> int:
         unique_arc_idxs1 = np.unique(
-            piece2.contour_segment_idxs[idxs2], return_counts=True
+            piece.contour_segment_idxs[idxs], return_counts=True
         )
 
-        arc_idxs2 = [
+        arc_idxs = [
             idx
             for idx, count in zip(*unique_arc_idxs1)
-            if idx != -1 and count > 0.7 * len(piece2.segments[idx])
+            if idx != -1 and count > 0.7 * len(piece.segments[idx])
         ]
-        if len(arc_idxs2) <= 1:
+        if len(arc_idxs) <= 1:
             return 0
-        return len(arc_idxs2)
+        return len(arc_idxs)
+
+    def _get_curve_winding_number(self, curve: Points) -> float:
+        curve = smooth_contours(curve, 3, False)
+        curve_diff = curve[:-1] - curve[1:]
+
+        if len(curve_diff) == 0:
+            return 0
+
+        curve_angle = np.arctan2(curve_diff[:, 0], curve_diff[:, 1])
+        return (curve_angle.max() - curve_angle.min()) / (2 * np.pi)
+
+    def get_match_complexity(self, key1: str, key2: str):
+        idxs, piece = self._get_match_longest_continuous_border(key1, key2)
+
+        if len(idxs) == 0:
+            return 0
+
+        segmnet_count = self._get_segment_count(idxs, piece)
+        winding_number = self._get_curve_winding_number(piece.contour[idxs])
+
+        # TODO: This wasn't tested with negative pieces. Simply omitting winding number
+        # corresponds to the former functionality.
+        return segmnet_count * winding_number
 
     @cached_property
     def complexity(self):

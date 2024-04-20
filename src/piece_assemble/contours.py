@@ -43,7 +43,7 @@ def extract_contours(img_bin: BinImg) -> tuple[Points, list[Points]]:
     ]
 
 
-def smooth_contours(contours: Points, sigma: float) -> Points:
+def smooth_contours(contours: Points, sigma: float, cyclic: bool = True) -> Points:
     """Smooth contour curve with gaussian filter.
 
     Parameters
@@ -58,10 +58,11 @@ def smooth_contours(contours: Points, sigma: float) -> Points:
     smoothed_contours
         2d array of points
     """
+    mode = "wrap" if cyclic else "reflect"
     return np.stack(
         [
-            gaussian_filter1d(contours[:, 0].astype(float), sigma, mode="wrap"),
-            gaussian_filter1d(contours[:, 1].astype(float), sigma, mode="wrap"),
+            gaussian_filter1d(contours[:, 0].astype(float), sigma, mode=mode),
+            gaussian_filter1d(contours[:, 1].astype(float), sigma, mode=mode),
         ],
         axis=1,
     )
