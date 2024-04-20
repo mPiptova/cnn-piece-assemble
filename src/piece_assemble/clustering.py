@@ -7,6 +7,7 @@ import cv2 as cv
 import numpy as np
 import shapely
 from more_itertools import flatten
+from rustworkx import PyGraph, connected_components
 from scipy.ndimage import gaussian_filter1d
 from shapely import Polygon
 from shapely.ops import unary_union
@@ -209,7 +210,9 @@ class Cluster:
             return 0
         return np.max(hole_areas)
 
-    def merge(self, other: Cluster, finetune_iters: int = 3) -> Cluster:
+    def merge(
+        self, other: Cluster, finetune_iters: int = 3, try_fix: bool = True
+    ) -> Cluster:
         """Merge this cluster with another cluster.
 
         Parameters
@@ -226,6 +229,7 @@ class Cluster:
         New merged cluster.
 
         """
+        was_fixed = False
         common_keys = self.piece_ids.intersection(other.piece_ids)
 
         if len(common_keys) == 0:
@@ -238,20 +242,25 @@ class Cluster:
         cluster1 = self.transform(self.pieces[common_key].transformation.inverse())
         cluster2 = other.transform(other.pieces[common_key].transformation.inverse())
 
+        parents = [cluster1, cluster2]
+
         for key in common_keys:
             if not cluster1.pieces[key].transformation.is_close(
                 cluster2.pieces[key].transformation
             ):
-                raise ConflictingTransformationsError(
-                    f"Transformations {cluster1.pieces[key].transformation} and "
-                    f"{cluster2.pieces[key].transformation} are not close."
-                )
+                if not try_fix:
+                    raise ConflictingTransformationsError(
+                        f"Transformations {cluster1.pieces[key].transformation} and "
+                        f"{cluster2.pieces[key].transformation} are not close."
+                    )
+                parents = None
+                was_fixed = True
+                cluster1.pieces.pop(key)
+                cluster2.pieces.pop(key)
 
-        new_pieces = cluster1.pieces.copy()
+        new_pieces = cluster1.pieces
         new_pieces.update(cluster2.pieces)
-        new_cluster = Cluster(
-            new_pieces, parents=[cluster1, cluster2], scorer=self.scorer
-        )
+        new_cluster = Cluster(new_pieces, parents=parents, scorer=self.scorer)
 
         if finetune_iters > 0:
             new_cluster = new_cluster.finetune_transformations(5)
@@ -260,10 +269,46 @@ class Cluster:
             np.log2(len(new_cluster.pieces)) + 1
         )
         if new_cluster.self_intersection > self_intersection_tol:
-            raise SelfIntersectionError(
-                f"Self intersection {new_cluster.self_intersection} "
-                f"is higher than tolerance {self_intersection_tol}"
-            )
+            if not try_fix:
+                raise SelfIntersectionError(
+                    f"Self intersection {new_cluster.self_intersection} "
+                    f"is higher than tolerance {self_intersection_tol}"
+                )
+            was_fixed = True
+            parents = None
+            new_pieces = new_pieces.copy()
+            for key1, key2 in combinations(new_cluster.pieces.keys(), 2):
+                p1 = shapely.transform(
+                    new_cluster.pieces[key1].piece.polygon,
+                    lambda pol: new_cluster.pieces[key1].transformation.apply(pol),
+                )
+                p2 = shapely.transform(
+                    new_cluster.pieces[key2].piece.polygon,
+                    lambda pol: new_cluster.pieces[key2].transformation.apply(pol),
+                )
+                if (
+                    p1.intersection(p2).area / min(p1.area, p2.area)
+                    > self_intersection_tol
+                ):
+                    new_pieces.pop(key1, None)
+                    new_pieces.pop(key2, None)
+
+            if len(new_pieces) == 0:
+                raise SelfIntersectionError(
+                    f"Self intersection {new_cluster.self_intersection} "
+                    f"is higher than tolerance {self_intersection_tol}"
+                )
+            new_cluster = Cluster(new_pieces, parents=parents, scorer=self.scorer)
+
+        if was_fixed:
+            # New cluster may be disconnected
+            components = connected_components(new_cluster.graph)
+            if len(components) != 1:
+                major_component = components[np.argmax([len(c) for c in components])]
+                piece_ids = [list(new_cluster.piece_ids)[i] for i in major_component]
+                new_pieces = {key: new_cluster.pieces[key] for key in piece_ids}
+
+                new_cluster = Cluster(new_pieces, self.scorer)
 
         return new_cluster
 
@@ -589,3 +634,11 @@ class Cluster:
                 img_contour[:, :, np.newaxis] == 0, np.array([[[1, 0, 0]]]), img
             )
         return img
+
+    @cached_property
+    def graph(self):
+        graph = PyGraph()
+        graph.add_nodes_from(list(self.piece_ids))
+        edges = np.where(self.neighbor_matrix)
+        graph.add_edges_from(list(zip(edges[0], edges[1], [None] * len(edges[0]))))
+        return graph
