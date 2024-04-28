@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
 from more_itertools import flatten
@@ -12,6 +15,9 @@ from piece_assemble.geometry import (
 )
 from piece_assemble.segment import ApproximatingArc, Segment
 from piece_assemble.types import NpImage, Point, Points
+
+if TYPE_CHECKING:
+    from piece_assemble.piece import Piece
 
 
 class DescriptorExtractor(ABC):
@@ -32,15 +38,26 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         n_colors: int = 0,
         tol_dist: float = 2.5,
         channels: int = 3,
-        color_w: float = 10,
-        min_segment_len=5,
+        min_segment_len: int = 5,
+        spatial_dist_w: float = 0,
+        color_dist_w: float = 10,
+        color_var_w: float = 0,
+        length_w: float = 0,
+        rel_len_diff_w: float = 0,
+        angle_w: float = 0,
     ):
         self.n_points = n_points
         self.n_colors = n_colors
         self.tol_dist = tol_dist
         self.channels = channels
-        self.color_w = color_w
+        self.spatial_dist_w = spatial_dist_w
+        self.color_dist_w = color_dist_w
+        self.length_w = length_w
+        self.rel_len_diff_w = rel_len_diff_w
+        self.angle_w = angle_w
         self.min_segment_len = min_segment_len
+        self.color_var_w = color_var_w
+        self.spatial_dist_thr = 1000
 
     def extract(
         self, contour: Points, image: NpImage
@@ -127,6 +144,23 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
 
         return dist / self.n_colors
 
+    def color_var(self, desc: np.ndarray) -> float:
+        vars = [
+            np.var(
+                desc[
+                    :,
+                    [
+                        self.n_points * 2 + i * self.channels + ch
+                        for i in range(self.n_colors)
+                    ],
+                ],
+                axis=1,
+            )
+            for ch in range(self.channels)
+        ]
+        var = np.max(vars, axis=0)
+        return var
+
     def spatial_dist(self, first: np.ndarray, second: np.ndarray) -> np.ndarray:
         dist = np.zeros((first.shape[0], second.shape[0]))
 
@@ -136,11 +170,39 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
                 -second[:, (self.n_points - i - 1) * 2 : (self.n_points - i) * 2],
             )
 
-        return dist / self.n_points
+        dist = dist / self.n_points
+        dist[dist > self.spatial_dist_thr] = np.inf
+        return dist
 
-    def dist(self, first: np.ndarray, second: np.ndarray) -> np.ndarray:
-        return self.spatial_dist(first, second) + self.color_w * self.color_dist(
-            first, second
+    def dist(self, piece1: Piece, piece2: Piece) -> np.ndarray:
+        color_dist = self.color_dist(piece1.descriptor, piece2.descriptor)
+        spatial_dist = self.spatial_dist(piece1.descriptor, piece2.descriptor)
+        min_var = np.minimum(
+            self.color_var(piece1.descriptor)[:, np.newaxis],
+            self.color_var(piece2.descriptor)[np.newaxis, :],
+        )
+
+        len1 = piece1.get_segment_lengths()
+        len2 = piece2.get_segment_lengths()
+        max_len = np.maximum(len1[:, np.newaxis], len2[np.newaxis, :])
+        min_len = np.minimum(len1[:, np.newaxis], len2[np.newaxis, :])
+        rel_len_diff = (max_len - min_len) / max_len
+
+        radii1 = np.array([segment.radius for segment in piece1.segments])
+        radii2 = np.array([segment.radius for segment in piece2.segments])
+        angles1 = len1 / (2 * np.pi * radii1)
+        angles2 = len2 / (2 * np.pi * radii2)
+
+        min_angles = np.minimum(angles1[:, np.newaxis], angles2[np.newaxis, :])
+
+        eps = 0.0000001
+        return (
+            spatial_dist * self.spatial_dist_w
+            + color_dist * self.color_dist_w
+            + self.color_var_w / (min_var + eps)
+            + self.length_w / (max_len + eps)
+            + rel_len_diff * self.rel_len_diff_w
+            + self.angle_w / (min_angles + eps)
         )
 
 
