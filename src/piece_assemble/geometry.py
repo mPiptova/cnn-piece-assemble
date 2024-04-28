@@ -327,6 +327,9 @@ class Transformation:
     rotation_angle: float
     translation: Point
 
+    def __post_init__(self):
+        self.rotation_angle = self.rotation_angle % (2 * np.pi)
+
     @property
     def rotation_matrix(self):
         """Return transformation rotation matrix."""
