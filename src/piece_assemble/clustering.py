@@ -277,6 +277,9 @@ class Cluster:
             was_fixed = True
             parents = None
             new_pieces = new_pieces.copy()
+            pieces_to_remove = np.random.choice(
+                [cluster1.piece_ids, cluster2.piece_ids]
+            )
             for key1, key2 in combinations(new_cluster.pieces.keys(), 2):
                 p1 = shapely.transform(
                     new_cluster.pieces[key1].piece.polygon,
@@ -290,8 +293,10 @@ class Cluster:
                     p1.intersection(p2).area / min(p1.area, p2.area)
                     > self_intersection_tol
                 ):
-                    new_pieces.pop(key1, None)
-                    new_pieces.pop(key2, None)
+                    if key1 in pieces_to_remove:
+                        new_pieces.pop(key1, None)
+                    if key2 in pieces_to_remove:
+                        new_pieces.pop(key2, None)
 
             if len(new_pieces) == 0:
                 raise SelfIntersectionError(
