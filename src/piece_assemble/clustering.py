@@ -210,6 +210,34 @@ class Cluster:
             return 0
         return np.max(hole_areas)
 
+    def _fix_overlapping_pieces(self, pieces_to_remove: set[str]) -> Cluster:
+        new_pieces = self.pieces.copy()
+        self_intersection_tol = self.self_intersection_tol * (
+            np.log2(len(new_pieces)) + 1
+        )
+
+        for key1, key2 in combinations(self.pieces.keys(), 2):
+            p1 = shapely.transform(
+                self.pieces[key1].piece.polygon,
+                lambda pol: self.pieces[key1].transformation.apply(pol),
+            )
+            p2 = shapely.transform(
+                self.pieces[key2].piece.polygon,
+                lambda pol: self.pieces[key2].transformation.apply(pol),
+            )
+            if p1.intersection(p2).area / min(p1.area, p2.area) > self_intersection_tol:
+                if key1 in pieces_to_remove:
+                    new_pieces.pop(key1, None)
+                if key2 in pieces_to_remove:
+                    new_pieces.pop(key2, None)
+
+        if len(new_pieces) == 0:
+            raise SelfIntersectionError(
+                f"Self intersection {self.self_intersection} "
+                f"is higher than tolerance {self_intersection_tol}"
+            )
+        return Cluster(new_pieces, parents=None, scorer=self.scorer)
+
     def merge(
         self, other: Cluster, finetune_iters: int = 3, try_fix: bool = True
     ) -> Cluster:
@@ -275,35 +303,11 @@ class Cluster:
                     f"is higher than tolerance {self_intersection_tol}"
                 )
             was_fixed = True
-            parents = None
-            new_pieces = new_pieces.copy()
             pieces_to_remove = np.random.choice(
                 [cluster1.piece_ids, cluster2.piece_ids]
             )
-            for key1, key2 in combinations(new_cluster.pieces.keys(), 2):
-                p1 = shapely.transform(
-                    new_cluster.pieces[key1].piece.polygon,
-                    lambda pol: new_cluster.pieces[key1].transformation.apply(pol),
-                )
-                p2 = shapely.transform(
-                    new_cluster.pieces[key2].piece.polygon,
-                    lambda pol: new_cluster.pieces[key2].transformation.apply(pol),
-                )
-                if (
-                    p1.intersection(p2).area / min(p1.area, p2.area)
-                    > self_intersection_tol
-                ):
-                    if key1 in pieces_to_remove:
-                        new_pieces.pop(key1, None)
-                    if key2 in pieces_to_remove:
-                        new_pieces.pop(key2, None)
 
-            if len(new_pieces) == 0:
-                raise SelfIntersectionError(
-                    f"Self intersection {new_cluster.self_intersection} "
-                    f"is higher than tolerance {self_intersection_tol}"
-                )
-            new_cluster = Cluster(new_pieces, parents=parents, scorer=self.scorer)
+            new_cluster = new_cluster._fix_overlapping_pieces(pieces_to_remove)
 
         if was_fixed:
             # New cluster may be disconnected
