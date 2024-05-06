@@ -222,7 +222,7 @@ class Cluster:
             return 0
         return np.max(hole_areas)
 
-    def _fix_overlapping_pieces(self, pieces_to_remove: set[str]) -> Cluster:
+    def _fix_overlapping_pieces(self, pieces_to_keep: set[str]) -> Cluster:
         new_pieces = self.pieces.copy()
         self_intersection_tol = self.self_intersection_tol * (
             np.log2(len(new_pieces)) + 1
@@ -238,9 +238,9 @@ class Cluster:
                 lambda pol: self.pieces[key2].transformation.apply(pol),
             )
             if p1.intersection(p2).area / min(p1.area, p2.area) > self_intersection_tol:
-                if key1 in pieces_to_remove:
+                if key1 not in pieces_to_keep:
                     new_pieces.pop(key1, None)
-                if key2 in pieces_to_remove:
+                if key2 not in pieces_to_keep:
                     new_pieces.pop(key2, None)
 
         if len(new_pieces) == 0:
@@ -305,7 +305,6 @@ class Cluster:
                 parents = None
                 was_fixed = True
                 cluster1.pieces.pop(key)
-                cluster2.pieces.pop(key)
 
         new_pieces = cluster1.pieces
         new_pieces.update(cluster2.pieces)
@@ -330,11 +329,8 @@ class Cluster:
                     f"is higher than tolerance {self_intersection_tol}"
                 )
             was_fixed = True
-            pieces_to_remove = np.random.choice(
-                [cluster1.piece_ids, cluster2.piece_ids]
-            )
 
-            new_cluster = new_cluster._fix_overlapping_pieces(pieces_to_remove)
+            new_cluster = new_cluster._fix_overlapping_pieces(self.piece_ids)
 
         if was_fixed:
             # New cluster may be disconnected
