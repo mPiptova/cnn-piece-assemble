@@ -135,7 +135,13 @@ class Cluster:
         return set(self.pieces.keys())
 
     def copy(self) -> Cluster:
-        new_cluster = Cluster(self.pieces.copy(), self.scorer, self.parents)
+        new_cluster = Cluster(
+            self.pieces.copy(),
+            self.scorer,
+            self.parents,
+            self.self_intersection_tol,
+            self.border_dist_tol,
+        )
         new_cluster.border_length = self.border_length
         return new_cluster
 
@@ -143,7 +149,13 @@ class Cluster:
         new_pieces = {
             key: piece.transform(transformation) for key, piece in self.pieces.items()
         }
-        new_cluster = Cluster(new_pieces, self.scorer, parents=[self])
+        new_cluster = Cluster(
+            new_pieces,
+            self.scorer,
+            [self],
+            self.self_intersection_tol,
+            self.border_dist_tol,
+        )
         new_cluster.border_length = self.border_length
         return new_cluster
 
@@ -236,10 +248,19 @@ class Cluster:
                 f"Self intersection {self.self_intersection} "
                 f"is higher than tolerance {self_intersection_tol}"
             )
-        return Cluster(new_pieces, parents=None, scorer=self.scorer)
+        return Cluster(
+            new_pieces,
+            self.scorer,
+            None,
+            self.self_intersection_tol,
+            self.border_dist_tol,
+        )
 
     def merge(
-        self, other: Cluster, finetune_iters: int = 3, try_fix: bool = True
+        self,
+        other: Cluster,
+        finetune_iters: int = 3,
+        try_fix: bool = True,
     ) -> Cluster:
         """Merge this cluster with another cluster.
 
@@ -288,7 +309,13 @@ class Cluster:
 
         new_pieces = cluster1.pieces
         new_pieces.update(cluster2.pieces)
-        new_cluster = Cluster(new_pieces, parents=parents, scorer=self.scorer)
+        new_cluster = Cluster(
+            new_pieces,
+            self.scorer,
+            parents,
+            self.self_intersection_tol,
+            self.border_dist_tol,
+        )
 
         if finetune_iters > 0:
             new_cluster = new_cluster.finetune_transformations(5)
@@ -317,7 +344,13 @@ class Cluster:
                 piece_ids = [list(new_cluster.piece_ids)[i] for i in major_component]
                 new_pieces = {key: new_cluster.pieces[key] for key in piece_ids}
 
-                new_cluster = Cluster(new_pieces, self.scorer)
+                new_cluster = Cluster(
+                    new_pieces,
+                    self.scorer,
+                    None,
+                    self.self_intersection_tol,
+                    self.border_dist_tol,
+                )
 
         return new_cluster
 
@@ -394,7 +427,13 @@ class Cluster:
                 new_contour = new_transform.apply(piece_contour)
                 contour_dict[piece_id] = new_contour
 
-        return Cluster(new_pieces, self.scorer, self.parents)
+        return Cluster(
+            new_pieces,
+            self.scorer,
+            self.parents,
+            self.self_intersection_tol,
+            self.border_dist_tol,
+        )
 
     @cached_property
     def convexity(self) -> float:
