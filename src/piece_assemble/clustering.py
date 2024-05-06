@@ -479,21 +479,7 @@ class Cluster:
             return idxs1, self.pieces[key1].piece
         return idxs2, self.pieces[key2].piece
 
-    # TODO: This two functions can be somewhere else
-    def _get_segment_count(self, idxs: np.ndarray, piece: Piece) -> int:
-        unique_arc_idxs1 = np.unique(
-            piece.contour_segment_idxs[idxs], return_counts=True
-        )
-
-        arc_idxs = [
-            idx
-            for idx, count in zip(*unique_arc_idxs1)
-            if idx != -1 and count > 0.7 * len(piece.segments[idx])
-        ]
-        if len(arc_idxs) <= 1:
-            return 0
-        return len(arc_idxs)
-
+    # TODO: This function can be somewhere else
     def _get_curve_winding_number(self, curve: Points) -> float:
         curve = smooth_contours(curve, 3, False)
         curve_diff = curve[:-1] - curve[1:]
@@ -510,12 +496,12 @@ class Cluster:
         if len(idxs) == 0:
             return 0
 
-        segmnet_count = self._get_segment_count(idxs, piece)
+        segment_count = piece.get_segment_count(idxs)
         winding_number = self._get_curve_winding_number(piece.contour[idxs])
 
         # TODO: This wasn't tested with negative pieces. Simply omitting winding number
         # corresponds to the former functionality.
-        return segmnet_count * winding_number
+        return segment_count * winding_number
 
     @cached_property
     def complexity(self):

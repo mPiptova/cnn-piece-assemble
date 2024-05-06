@@ -106,3 +106,29 @@ class Piece:
         self.descriptor = np.array(
             [self.segment_descriptor(arc.contour) for arc in self.segments]
         )
+
+    def get_segment_count(self, idxs: np.ndarray) -> int:
+        """Return the number of segments included in the given contour selection.
+
+        Parameters
+        ----------
+        idxs
+            Indexes defining the contour section.
+
+
+        Returns
+        -------
+        segment_count
+            The total number of segments that the border section spans over.
+        """
+        unique_arc_idxs1 = np.unique(
+            self.contour_segment_idxs[idxs], return_counts=True
+        )
+
+        arc_idxs = [
+            idx
+            for idx, count in zip(*unique_arc_idxs1)
+            if idx != -1 and count > 0.7 * len(self.segments[idx])
+        ]
+
+        return len(arc_idxs)
