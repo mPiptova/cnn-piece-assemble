@@ -317,7 +317,7 @@ class Cluster:
         )
 
         if finetune_iters > 0:
-            new_cluster = new_cluster.finetune_transformations(5)
+            new_cluster = new_cluster.finetune_transformations(finetune_iters)
 
         self_intersection_tol = self.self_intersection_tol * (
             np.log2(len(new_cluster.pieces)) + 1
