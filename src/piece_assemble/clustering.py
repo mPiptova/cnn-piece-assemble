@@ -1,674 +1,552 @@
-from __future__ import annotations
-
-from functools import cached_property
+import math
+import os
+import random
+import shutil
+import time
+from ast import Match
 from itertools import combinations
+from multiprocessing import Manager, Pool, Queue
 
-import cv2 as cv
 import numpy as np
-import shapely
-from more_itertools import flatten
-from rustworkx import PyGraph, connected_components
-from scipy.ndimage import gaussian_filter1d
-from shapely import Polygon
-from shapely.ops import unary_union
-from skimage.transform import rotate
+from tqdm import tqdm
 
-from piece_assemble.contours import smooth_contours
-from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
+from piece_assemble.cluster import Cluster, ClusterScorer
+from piece_assemble.descriptor import DescriptorExtractor
+from piece_assemble.image import np_to_pil
+from piece_assemble.matching import find_all_matches_with_preprocessing
 from piece_assemble.piece import Piece
-from piece_assemble.types import Points
-from piece_assemble.utils import longest_continuous_subsequence
-from piece_assemble.visualization import draw_contour
 
 
-class ClusterScorer:
+class Clustering:
+    """Class for assembling pieces into clusters."""
+
     def __init__(
         self,
-        w_convexity: float,
-        w_complexity: float,
-        w_color_dist: float,
-        w_dist: float,
-        w_hole_area: float,
-        min_allowed_hole_size: float,
-        w_border_length: float,
-    ) -> None:
-        self.w_convexity = w_convexity
-        self.w_complexity = w_complexity
-        self.w_color_dist = w_color_dist
-        self.w_dist = w_dist
-        self.w_hole_area = w_hole_area
-        self.min_allowed_hole_size = min_allowed_hole_size
-        self.w_border_length = w_border_length
-
-    def __call__(self, cluster: Cluster) -> float:
-        convexity_score = cluster.convexity * self.w_convexity
-        complexity_score = (
-            cluster.complexity * cluster.avg_neighbor_count * self.w_complexity
-        )
-        color_score = -cluster.color_dist * self.w_color_dist
-        dist_score = -cluster.dist * self.w_dist
-        hole_score = (
-            0
-            if cluster.max_hole_area > self.min_allowed_hole_size
-            else -cluster.max_hole_area * self.w_hole_area
-        )
-        border_length_score = cluster.border_length * self.w_border_length
-        return (
-            convexity_score
-            + complexity_score
-            + color_score
-            + dist_score
-            + hole_score
-            + border_length_score
-        )
-
-
-class MergeError(Exception):
-    """Exception for errors during cluster merging."""
-
-    pass
-
-
-class DisjunctClustersError(MergeError):
-    """Exception raised when two disjunct clusters are merged."""
-
-    pass
-
-
-class ConflictingTransformationsError(MergeError):
-    """Exception raised when two clusters have conflicting transformations."""
-
-    pass
-
-
-class SelfIntersectionError(MergeError):
-    """Exception raised when the intersection of the cluster is too high."""
-
-
-class TransformedPiece:
-    def __init__(self, piece: Piece, transformation: Transformation) -> None:
-        self.piece = piece
-        self.transformation = transformation
-
-    def transform(self, transformation: Transformation) -> TransformedPiece:
-        return TransformedPiece(self.piece, self.transformation.compose(transformation))
-
-
-class Cluster:
-    def __init__(
-        self,
-        pieces: dict[str, TransformedPiece],
-        scorer: ClusterScorer,
-        parents: list[Cluster] = None,
-        self_intersection_tol: float = 0.01,
-        border_dist_tol: float = 2,
+        pieces: list[Piece],
+        descriptor_extractor: DescriptorExtractor,
+        cluster_scorer: ClusterScorer,
     ) -> None:
         self.pieces = pieces
-        self.parents = parents
-        self.scorer = scorer
-        self.self_intersection_tol = self_intersection_tol
-        self.border_dist_tol = border_dist_tol
+        self.descriptor_extractor = descriptor_extractor
+        self.cluster_scorer = cluster_scorer
+        self.all_ids = [piece.name for piece in pieces]
 
-    @cached_property
-    def score(self) -> float:
-        return self.scorer(self)
+        self.reset(True)
+        self.set_logging(None)
+        self.random = random.Random()
 
-    @cached_property
-    def border(self) -> Points:
-        border = []
-        for (key1, key2) in self.matches_border_idxs.keys():
-            b1, b2 = self.get_match_border_coordinates(key1, key2)
-            if b1 is None:
-                continue
-            border.append((b1 + b2) / 2)
+    def reset(self, reset_all_matches: bool = False) -> None:
+        self.clusters = []
+        self.trusted_clusters = []
+        self._i = 0
+        self.all_pair_clusters = {}
+        self.cluster_history = []
 
-        if len(border) == 0:
-            return []
-        return np.concatenate(border)
+        if reset_all_matches:
+            self.all_matches = None
 
-    @cached_property
-    def border_length(self) -> int:
-        return len(self.border)
-
-    @property
-    def piece_ids(self) -> set[str]:
-        return set(self.pieces.keys())
-
-    def copy(self) -> Cluster:
-        new_cluster = Cluster(
-            self.pieces.copy(),
-            self.scorer,
-            self.parents,
-            self.self_intersection_tol,
-            self.border_dist_tol,
-        )
-        new_cluster.border_length = self.border_length
-        return new_cluster
-
-    def transform(self, transformation: Transformation) -> Cluster:
-        new_pieces = {
-            key: piece.transform(transformation) for key, piece in self.pieces.items()
-        }
-        new_cluster = Cluster(
-            new_pieces,
-            self.scorer,
-            [self],
-            self.self_intersection_tol,
-            self.border_dist_tol,
-        )
-        new_cluster.border_length = self.border_length
-        return new_cluster
-
-    @cached_property
-    def dist(self) -> float:
-        dists = []
-        for key1, key2 in combinations(self.piece_ids, 2):
-            b1, b2 = self.get_match_border_coordinates(key1, key2)
-            if b1 is None:
-                continue
-            dists.append(np.linalg.norm(b1 - b2, axis=1))
-
-        if len(dists) == 0:
-            return np.inf
-
-        dists = np.concatenate(dists)
-        return np.mean(dists)
-
-    @cached_property
-    def self_intersection(self) -> float:
-        polygons = self.transformed_polygons
-        return max(
-            [
-                p1.intersection(p2).area / min(p1.area, p2.area)
-                for p1, p2 in combinations(polygons, 2)
-            ]
-        )
-
-    @property
-    def transformed_polygons(self) -> list[Polygon]:
-        return [
-            shapely.transform(
-                piece.piece.polygon, lambda pol: piece.transformation.apply(pol)
-            )
-            for piece in self.pieces.values()
-        ]
-
-    def intersection(self, polygon: Polygon) -> float:
-        polygons = self.transformed_polygons
-        return max(
-            [p.intersection(polygon).area / min(p.area, polygon.area) for p in polygons]
-        )
-
-    @cached_property
-    def polygon_union(self) -> Polygon:
-        polygons = self.transformed_polygons
-        polygons = [polygon.buffer(1) for polygon in polygons]
-        return unary_union(polygons)
-
-    @cached_property
-    def max_hole_area(self):
-        union = self.polygon_union
-
-        if union.geom_type == "Polygon":
-            polygons = [union]
-        else:
-            polygons = union.geoms
-        hole_areas = [
-            [Polygon(hole.coords).area for hole in polygon.interiors]
-            for polygon in polygons
-        ]
-        hole_areas = list(flatten(hole_areas))
-        if len(hole_areas) == 0:
-            return 0
-        return np.max(hole_areas)
-
-    def _fix_overlapping_pieces(self, pieces_to_keep: set[str]) -> Cluster:
-        new_pieces = self.pieces.copy()
-        self_intersection_tol = self.self_intersection_tol * (
-            np.log2(len(new_pieces)) + 1
-        )
-
-        for key1, key2 in combinations(self.pieces.keys(), 2):
-            p1 = shapely.transform(
-                self.pieces[key1].piece.polygon,
-                lambda pol: self.pieces[key1].transformation.apply(pol),
-            )
-            p2 = shapely.transform(
-                self.pieces[key2].piece.polygon,
-                lambda pol: self.pieces[key2].transformation.apply(pol),
-            )
-            if p1.intersection(p2).area / min(p1.area, p2.area) > self_intersection_tol:
-                if key1 not in pieces_to_keep:
-                    new_pieces.pop(key1, None)
-                if key2 not in pieces_to_keep:
-                    new_pieces.pop(key2, None)
-
-        if len(new_pieces) == 0:
-            raise SelfIntersectionError(
-                f"Self intersection {self.self_intersection} "
-                f"is higher than tolerance {self_intersection_tol}"
-            )
-        return Cluster(
-            new_pieces,
-            self.scorer,
-            None,
-            self.self_intersection_tol,
-            self.border_dist_tol,
-        )
-
-    def merge(
+    def set_logging(
         self,
-        other: Cluster,
-        finetune_iters: int = 3,
-        try_fix: bool = True,
-    ) -> Cluster:
-        """Merge this cluster with another cluster.
+        output_images_path: str,
+        store_new_matches: bool = True,
+        store_old_matches: bool = False,
+        store_trusted_clusters: bool = False,
+    ) -> None:
+        self._output_path = output_images_path
+        self._store_new_matches = store_new_matches
+        self._store_old_matches = store_old_matches
+        self._store_trusted_clusters = store_trusted_clusters
+
+    def find_candidate_matches(self, n_matches: int = 40000) -> None:
+        self.all_matches = find_all_matches_with_preprocessing(
+            self.pieces, self.descriptor_extractor
+        )[:n_matches]
+
+    def __call__(
+        self,
+        n_iters: int,
+        trusted_cluster_config: dict,
+        cluster_config: dict,
+        icp_max_iters: int,
+        icp_min_change: float,
+        n_new_matches: int = 10,
+        n_processes: int = 4,
+        min_complexity: int = 2,
+        n_used_matches: int = 40000,
+    ) -> None:
+        if self.all_matches is None:
+            self.find_candidate_matches(n_used_matches)
+
+        matches = self.all_matches.copy()
+        matches.sort(key=lambda m: np.random.normal(m.dist, 0.5))
+
+        manager = Manager()
+        queue = manager.Queue()
+
+        with Pool(n_processes) as p:
+            batch_size = 100
+            self._worker_count = int(np.ceil(len(matches) / batch_size))
+            for j in range(0, len(matches), batch_size):
+                p.apply_async(
+                    matches_checker,
+                    args=(
+                        matches[j : min(j + batch_size, len(matches))],
+                        queue,
+                        self.cluster_scorer,
+                        cluster_config,
+                        icp_max_iters,
+                        icp_min_change,
+                    ),
+                )
+
+            self._workers_finished = 0
+            for i in range(self._i, self._i + n_iters):
+                self._i = i + 1
+                self.run_iteration(
+                    i,
+                    trusted_cluster_config,
+                    n_new_matches,
+                    min_complexity,
+                    queue,
+                )
+
+    def run_iteration(
+        self,
+        i: int,
+        trusted_cluster_config: dict,
+        n_new_matches: int,
+        min_complexity: float,
+        queue: Queue,
+    ):
+        print(f"ITERATION {i}")
+
+        max_cluster_size = 2 ** (i + 2)
+        new_pair_clusters = self.get_new_pair_clusters(
+            n_new_matches, queue, trusted_cluster_config, min_complexity
+        )
+
+        potential_trusted_clusters = []
+        for all_found_pair_for_keys in self.all_pair_clusters.values():
+            for pair_cluster in all_found_pair_for_keys:
+                if pair_cluster["count"] >= 6:
+                    potential_trusted_clusters.append(pair_cluster["cluster"])
+
+        self.update_trusted_clusters(potential_trusted_clusters, lambda _: True)
+
+        if self._store_trusted_clusters:
+            self.store_iteration(f"{i}trusted", self.trusted_clusters)
+
+        new_pair_clusters.sort(key=lambda cluster: cluster.score, reverse=True)
+
+        if self._store_new_matches:
+            self.store_iteration(f"{i}new_matches", new_pair_clusters)
+
+        new_pair_clusters = self.apply_trusted_clusters(new_pair_clusters)
+
+        # Get interesting previous clusters
+        previous_clusters = []
+        if (
+            len(self.clusters) >= 1
+            and len(self.clusters[0].piece_ids) > 0.5 * len(self.all_ids)
+            or len(new_pair_clusters) < 5
+        ):
+            print("USING PREVIOUSLY ADDED CLUSTERS")
+            previous_clusters = self.find_applicable_previous_clusters(
+                self.clusters[0], max(5, n_new_matches - len(new_pair_clusters))
+            )
+            if len(previous_clusters) != 0 and self._store_old_matches:
+                self.store_iteration(f"{i}old_matches", previous_clusters)
+        self.clusters = self.recombine(
+            self.clusters + new_pair_clusters + previous_clusters, max_cluster_size
+        )
+
+        self.clusters.sort(key=lambda cluster: cluster.score, reverse=True)
+
+        if max_cluster_size >= len(self.all_ids):
+            self.clusters = self.apply_trusted_clusters(self.clusters)
+
+        # self.clusters = self.cluster_selection(self.clusters)
+        # self.clusters = self.recombine(self.clusters, max_cluster_size)
+
+        self.store_iteration(f"{i}iter", self.clusters)
+        self.cluster_history.append(self.clusters)
+
+    def get_new_pair_clusters(
+        self,
+        n_new_matches: int,
+        queue: Queue,
+        trusted_cluster_config: dict,
+        min_complexity: float,
+    ) -> list[Cluster]:
+        new_pair_clusters = []
+
+        with tqdm(desc="Generating new matches", total=n_new_matches) as pbar:
+            while (
+                len(new_pair_clusters) < n_new_matches
+                and self._workers_finished < self._worker_count
+            ):
+                if queue.empty():
+                    time.sleep(1)
+                    continue
+
+                new_cluster = queue.get()
+
+                if new_cluster is None:
+                    self._workers_finished += 1
+                    # print(
+                    #     f"{self._workers_finished} workers of"
+                    #     + f" {self._worker_count} finished"
+                    # )
+                    continue
+                new_cluster = self.process_new_cluster(
+                    new_cluster, trusted_cluster_config, min_complexity
+                )
+                if new_cluster is not None:
+                    new_pair_clusters.append(new_cluster)
+                    pbar.update(1)
+            return new_pair_clusters
+
+    def process_new_cluster(self, new_cluster, trusted_cluster_config, min_complexity):
+        if new_cluster.complexity < 1:
+            return
+
+        new_cluster_list = self.update_trusted_clusters(
+            [new_cluster],
+            lambda cluster: cluster_can_be_trusted(cluster, **trusted_cluster_config),
+        )
+
+        if len(new_cluster_list) == 0:
+            return
+        new_cluster = new_cluster_list[0]
+
+        new_keys = frozenset(new_cluster.piece_ids)
+        is_duplicate = False
+        all_found_pair_for_keys = self.all_pair_clusters.get(new_keys, [])
+        for pair_cluster_dict in all_found_pair_for_keys:
+            pair_cluster = pair_cluster_dict["cluster"]
+            if pair_cluster.can_be_merged(new_cluster):
+                if new_cluster.score > pair_cluster.score:
+                    pair_cluster_dict["cluster"] = new_cluster
+                pair_cluster_dict["count"] = pair_cluster_dict["count"] + 1
+                is_duplicate = True
+                break
+
+        if is_duplicate:
+            return
+
+        all_found_pair_for_keys.append({"cluster": new_cluster, "count": 1})
+        self.all_pair_clusters[new_keys] = all_found_pair_for_keys
+
+        if new_cluster.complexity >= min_complexity:
+            # Use this match now only if it's interesting enough, otherwise
+            # just remember it to use it later
+            return new_cluster
+
+    def combine(
+        self, cluster1: Cluster, cluster2: Cluster, max_cluster_size: int | None
+    ) -> Cluster | None:
+        """Combine two clusters, if possible.
 
         Parameters
         ----------
-        other
-            Cluster to be merged with.
-        finetune_iters
-            Number of finetuning iterations,
-            After merging, ICP is run on all clusters to prevent cumulation
-            of small errors.
+        cluster1
+            First cluster.
+        cluster2
+            Second cluster.
+        max_cluster_size
+            Cluster won't be merged if their total number of pieces exceeds this limit.
 
         Returns
         -------
-        New merged cluster.
-
+        new_cluster
+            New combined cluster.
         """
-        was_fixed = False
-        common_keys = self.piece_ids.intersection(other.piece_ids)
+        # merging depends on the cluster order, so let's randomize it
+        if self.random.random() < 0.5:
+            cluster2, cluster1 = cluster1, cluster2
 
-        if len(common_keys) == 0:
-            raise DisjunctClustersError(
-                f"Pieces {self.piece_ids} and {other.piece_ids} "
-                "have no common elements."
-            )
+        if (
+            max_cluster_size is not None
+            and len(cluster1.piece_ids.union(cluster2.piece_ids)) > max_cluster_size
+        ):
+            return None
+        if cluster1.piece_ids.isdisjoint(cluster2.piece_ids):
+            return None
 
-        common_key = common_keys.pop()
-        cluster1 = self.transform(self.pieces[common_key].transformation.inverse())
-        cluster2 = other.transform(other.pieces[common_key].transformation.inverse())
+        if cluster1.piece_ids.issubset(
+            cluster2.piece_ids
+        ) or cluster2.piece_ids.issubset(cluster1.piece_ids):
+            return None
 
-        parents = [cluster1, cluster2]
+        piece_union = cluster1.piece_ids.union(cluster2.piece_ids)
+        innovative_merge = True
 
-        for key in common_keys:
-            if not cluster1.pieces[key].transformation.is_close(
-                cluster2.pieces[key].transformation
-            ):
-                if not try_fix:
-                    raise ConflictingTransformationsError(
-                        f"Transformations {cluster1.pieces[key].transformation} and "
-                        f"{cluster2.pieces[key].transformation} are not close."
-                    )
-                parents = None
-                was_fixed = True
-                cluster1.pieces.pop(key)
+        if not innovative_merge:
+            return None
 
-        new_pieces = cluster1.pieces
-        new_pieces.update(cluster2.pieces)
-        new_cluster = Cluster(
-            new_pieces,
-            self.scorer,
-            parents,
-            self.self_intersection_tol,
-            self.border_dist_tol,
-        )
+        finetune_iters = 0
+        if len(piece_union) < 5:
+            finetune_iters = 5
+        elif len(piece_union) < 10:
+            finetune_iters = 3
 
-        if finetune_iters > 0:
-            new_cluster = new_cluster.finetune_transformations(finetune_iters)
-
-        self_intersection_tol = self.self_intersection_tol * (
-            np.log2(len(new_cluster.pieces)) + 1
-        )
-        if new_cluster.self_intersection > self_intersection_tol:
-            if not try_fix:
-                raise SelfIntersectionError(
-                    f"Self intersection {new_cluster.self_intersection} "
-                    f"is higher than tolerance {self_intersection_tol}"
-                )
-            was_fixed = True
-
-            new_cluster = new_cluster._fix_overlapping_pieces(self.piece_ids)
-
-        if was_fixed:
-            # New cluster may be disconnected
-            components = connected_components(new_cluster.graph)
-            if len(components) != 1:
-                major_component = components[np.argmax([len(c) for c in components])]
-                piece_ids = [list(new_cluster.piece_ids)[i] for i in major_component]
-                new_pieces = {key: new_cluster.pieces[key] for key in piece_ids}
-
-                new_cluster = Cluster(
-                    new_pieces,
-                    self.scorer,
-                    None,
-                    self.self_intersection_tol,
-                    self.border_dist_tol,
-                )
-
+        finetune_iters = 10
+        try:
+            new_cluster = cluster1.merge(cluster2, finetune_iters=finetune_iters)
+        except Exception:
+            return None
         return new_cluster
 
-    def can_be_merged(self, other: Cluster) -> Cluster:
-        """Checks whether two clusters can be merged.
+    def recombine(
+        self, clusters: list[Cluster], max_cluster_size: int | None = None
+    ) -> list[Cluster]:
+        """Create new clusters from given clusters via merging.
 
-        Returns True if they share at least one piece and the relative position of
-        the shared pieces is the same (within some tolerance).
-
-        Parameters
-        ----------
-        other
-
-        Returns
-        -------
-        Whether this cluster can be merged with the other cluster.
-        """
-
-        common_keys = self.piece_ids.intersection(other.piece_ids)
-        if len(common_keys) == 0:
-            return False
-
-        common_key = common_keys.pop()
-        cluster1 = self.transform(self.pieces[common_key].transformation.inverse())
-        cluster2 = other.transform(other.pieces[common_key].transformation.inverse())
-
-        return all(
-            cluster1.pieces[key].transformation.is_close(
-                cluster2.pieces[key].transformation
-            )
-            for key in common_keys
-        )
-
-    def finetune_transformations(self, num_iters: int = 3):
-        """Improve transformations using ICP algorithm.
-
-        Helps preventing cumulation of small errors in large clusters.
+        Merges together all clusters which can be merged.
+        Runs in iterations.
 
         Parameters
         ----------
-        num_iters
-            Number of iterations. Defines how many times a position of each cluster
-            will be adjusted.
+        clusters
+            List of clusters.
+        max_cluster_size
+            Cluster won't be merged if their total number of pieces exceeds this limit.
 
         Returns
         -------
-        New finetuned cluster.
+        recombined_clusters
+            List of clusters created from the original clusters with merging.
         """
-        contour_dict = {
-            key: piece.transformation.apply(piece.piece.contour)
-            for key, piece in self.pieces.items()
-        }
+        new_clusters_added = True
+        while new_clusters_added:
+            new_clusters_added = False
+            new_clusters_dict = {
+                frozenset(cluster.piece_ids): cluster for cluster in clusters
+            }
+            cluster_combinations = list(combinations(clusters, 2))
+            random.shuffle(cluster_combinations)
 
-        new_pieces = self.pieces.copy()
-        for _ in range(num_iters):
-            for piece_id in self.piece_ids:
-                piece_contour = contour_dict[piece_id]
-                other_contours = np.concatenate(
-                    [
-                        contour
-                        for _id, contour in contour_dict.items()
-                        if _id != piece_id
-                    ]
+            used_pieces = set()
+            with tqdm(desc="Recombining", total=math.comb(len(clusters), 2)) as pbar:
+                for i, c1 in enumerate(clusters[:-1]):
+                    if frozenset(c1.piece_ids) in used_pieces:
+                        pbar.update(len(clusters[i + 1 :]))
+                        continue
+                    for c2 in clusters[i + 1 :]:
+                        pbar.update(1)
+                        if (
+                            frozenset(c1.piece_ids) in used_pieces
+                            or frozenset(c2.piece_ids) in used_pieces
+                        ):
+                            continue
+
+                        new_cluster = self.combine(c1, c2, max_cluster_size)
+                        if new_cluster is None:
+                            continue
+
+                        indicator = frozenset(new_cluster.piece_ids)
+                        if indicator in new_clusters_dict.keys():
+                            if new_clusters_dict[indicator].score < new_cluster.score:
+                                new_clusters_dict[indicator] = new_cluster
+                        else:
+                            used_pieces.update(
+                                {frozenset(c1.piece_ids), frozenset(c2.piece_ids)}
+                            )
+                            new_clusters_dict[indicator] = new_cluster
+                            new_clusters_added = True
+
+            if len(new_clusters_dict.values()) == len(clusters):
+                new_clusters_added = False
+
+            prev_cluster_len = len(clusters)
+            clusters = list(new_clusters_dict.values())
+            clusters = self.cluster_selection(clusters)
+            if prev_cluster_len == len(clusters):
+                new_clusters_added = False
+
+        return clusters
+
+    def cluster_selection(self, clusters: list[Cluster]):
+        """Select best cluster representative.
+
+        Parameters
+        ----------
+        clusters
+            List of clusters
+
+        Returns
+        -------
+        selected_clusters
+            List of selected clusters.
+        """
+        clusters.sort(key=lambda cluster: cluster.score, reverse=True)
+        clusters_by_piece = {key: [] for key in self.all_ids}
+
+        for i, cluster in enumerate(clusters):
+            for piece_id in cluster.piece_ids:
+                clusters_by_piece[piece_id].append(i)
+
+        selected_cluster_idxs = set()
+
+        for cluster_list in clusters_by_piece.values():
+            if len(cluster_list) == 0:
+                continue
+            new_i = cluster_list.pop(0)
+
+            for i in selected_cluster_idxs.copy():
+                if clusters[new_i].piece_ids.issubset(clusters[i].piece_ids):
+                    new_i = None
+                    break
+                if clusters[i].piece_ids.issubset(clusters[new_i].piece_ids):
+                    selected_cluster_idxs.remove(i)
+            if new_i is not None:
+                selected_cluster_idxs.add(new_i)
+
+        selection = [clusters[i] for i in selected_cluster_idxs]
+        selection.sort(key=lambda cluster: cluster.score, reverse=True)
+        return selection
+
+    def apply_trusted_clusters(self, clusters: Cluster) -> list[Cluster]:
+        """Extend given clusters by trusted clusters.
+
+        Parameters
+        ----------
+        clusters
+
+        Returns
+        -------
+        new_cluster
+            Extended clusters (only valid ones).
+        """
+        new_clusters = []
+        for cluster in tqdm(clusters, "Applying trusted clusters"):
+            for trusted_cluster in self.trusted_clusters:
+                if trusted_cluster.piece_ids.issubset(
+                    cluster.piece_ids
+                ) and cluster.can_be_merged(trusted_cluster):
+                    continue
+                if cluster.piece_ids.isdisjoint(trusted_cluster.piece_ids):
+                    continue
+                try:
+                    cluster = trusted_cluster.merge(cluster, try_fix=True)
+                except Exception:
+                    cluster = None
+                    break
+
+            if cluster is None:
+                continue
+            for new_cluster in new_clusters.copy():
+                if cluster.piece_ids.issubset(new_cluster.piece_ids):
+                    cluster = None
+                    break
+                if new_cluster.piece_ids.issubset(cluster.piece_ids):
+                    new_clusters.remove(new_cluster)
+            if cluster is not None:
+                new_clusters.append(cluster)
+
+        return new_clusters
+
+    def update_trusted_clusters(self, clusters, trust_function) -> list[Cluster]:
+        other_clusters = []
+        for cluster in clusters:
+            used_trusted_clusters = []
+            if not trust_function(cluster):
+                other_clusters.append(cluster)
+                continue
+            for trusted_cluster in self.trusted_clusters:
+                if cluster.piece_ids.issubset(trusted_cluster.piece_ids):
+                    cluster = None
+                    break
+                if cluster.piece_ids.isdisjoint(trusted_cluster.piece_ids):
+                    continue
+                try:
+                    cluster = cluster.merge(trusted_cluster, try_fix=False)
+                    used_trusted_clusters.append(trusted_cluster)
+                except Exception:
+                    cluster = None
+                    break
+
+            if cluster is not None:
+                self.trusted_clusters.append(cluster)
+                for trusted_cluster in used_trusted_clusters:
+                    self.trusted_clusters.remove(trusted_cluster)
+        return other_clusters
+
+    def find_applicable_previous_clusters(
+        self, best_cluster: Cluster, max_count: int
+    ) -> list[Cluster]:
+        previous_cluster_list = []
+        for keys, pair_previous_clusters in self.all_pair_clusters.items():
+            if len(keys.intersection(best_cluster.piece_ids)) == 1:
+                previous_cluster_list.extend(
+                    [cluster["cluster"] for cluster in pair_previous_clusters]
                 )
-
-                new_transform = icp(
-                    piece_contour,
-                    other_contours,
-                    Transformation.identity(),
-                    self.border_dist_tol,
+        if len(previous_cluster_list) > 0:
+            previous_clusters = list(
+                np.random.choice(
+                    previous_cluster_list, min(max_count, len(previous_cluster_list))
                 )
-                new_pieces[piece_id] = new_pieces[piece_id].transform(new_transform)
-
-                new_contour = new_transform.apply(piece_contour)
-                contour_dict[piece_id] = new_contour
-
-        return Cluster(
-            new_pieces,
-            self.scorer,
-            self.parents,
-            self.self_intersection_tol,
-            self.border_dist_tol,
-        )
-
-    @cached_property
-    def convexity(self) -> float:
-        union_polygon = self.polygon_union
-        return union_polygon.area / union_polygon.convex_hull.area
-
-    def indicator(self, all_ids):
-        return np.array(
-            [True if piece_id in self.piece_ids else False for piece_id in all_ids]
-        )
-
-    @cached_property
-    def matches_border_idxs(self):
-        matches_border_dict = {}
-
-        if self.parents is not None:
-            for parent in self.parents:
-                matches_border_dict.update(parent.matches_border_idxs)
-
-        for key1, key2 in combinations(self.piece_ids, 2):
-
-            if (key1, key2) in matches_border_dict.keys() or (
-                key2,
-                key1,
-            ) in matches_border_dict.keys():
-                continue
-            piece1 = self.pieces[key1].piece
-            piece2 = self.pieces[key2].piece
-            transformation1 = self.pieces[key1].transformation
-            transformation2 = self.pieces[key2].transformation
-            idxs1, idxs2 = get_common_contour_idxs(
-                transformation1.apply(piece1.contour),
-                transformation2.apply(piece2.contour),
-                self.border_dist_tol,
             )
+            previous_clusters = self.apply_trusted_clusters(previous_clusters)
+            return previous_clusters
+        return []
 
-            if len(idxs1) == 0:
-                continue
-            matches_border_dict[(key1, key2)] = (idxs1, idxs2)
+    def store_iteration(self, name: str, clusters: list[Cluster]) -> None:
+        if self._output_path is None:
+            return
 
-        return matches_border_dict
+        base_dir = f"{self._output_path}/{name}"
 
-    def get_match_border_idxs(self, key1, key2):
-        if (key1, key2) in self.matches_border_idxs.keys():
-            idxs1, idxs2 = self.matches_border_idxs[(key1, key2)]
-        elif (key2, key1) in self.matches_border_idxs.keys():
-            idxs2, idxs1 = self.matches_border_idxs[(key2, key1)]
-        else:
-            return None, None
+        try:
+            os.mkdir(base_dir)
+        except Exception:
+            shutil.rmtree(base_dir)
+            os.mkdir(base_dir)
 
-        return idxs1, idxs2
-
-    def get_match_border_coordinates(self, key1, key2):
-        idxs1, idxs2 = self.get_match_border_idxs(key1, key2)
-        if idxs1 is None:
-            return None, None
-
-        piece1 = self.pieces[key1].piece
-        piece2 = self.pieces[key2].piece
-
-        coords1 = self.pieces[key1].transformation.apply(piece1.contour[idxs1])
-        coords2 = self.pieces[key2].transformation.apply(piece2.contour[idxs2])
-
-        return coords1, coords2
-
-    def _get_match_longest_continuous_border(
-        self, key1: str, key2: str
-    ) -> tuple[Piece, np.ndarray]:
-        idxs1, idxs2 = self.get_match_border_idxs(key1, key2)
-        if idxs2 is None:
-            return [], None
-
-        def get_longest_continuous_idxs(idxs: np.ndarray, piece: Piece):
-            idxs = np.concatenate((idxs, idxs + len(piece.contour)))
-            idxs = longest_continuous_subsequence(np.unique(idxs))
-            return idxs % len(piece.contour)
-
-        idxs1 = get_longest_continuous_idxs(idxs1, self.pieces[key1].piece)
-        idxs2 = get_longest_continuous_idxs(idxs2, self.pieces[key2].piece)
-
-        if len(idxs1) > len(idxs2):
-            return idxs1, self.pieces[key1].piece
-        return idxs2, self.pieces[key2].piece
-
-    # TODO: This function can be somewhere else
-    def _get_curve_winding_number(self, curve: Points) -> float:
-        curve = smooth_contours(curve, 3, False)
-        curve_diff = curve[:-1] - curve[1:]
-
-        if len(curve_diff) == 0:
-            return 0
-
-        curve_angle = np.arctan2(curve_diff[:, 0], curve_diff[:, 1])
-        return (curve_angle.max() - curve_angle.min()) / (2 * np.pi)
-
-    def get_match_complexity(self, key1: str, key2: str):
-        idxs, piece = self._get_match_longest_continuous_border(key1, key2)
-
-        if len(idxs) == 0:
-            return 0
-
-        segment_count = piece.get_segment_count(idxs)
-        winding_number = self._get_curve_winding_number(piece.contour[idxs])
-
-        # TODO: This wasn't tested with negative pieces. Simply omitting winding number
-        # corresponds to the former functionality.
-        return segment_count * winding_number
-
-    @cached_property
-    def complexity(self):
-        total_complexity = 0
-        for key1, key2 in combinations(self.piece_ids, 2):
-            total_complexity += self.get_match_complexity(key1, key2)
-
-        return total_complexity
-
-    def get_match_color_dist(self, key1: str, key2: str):
-        piece1 = self.pieces[key1].piece
-        piece2 = self.pieces[key2].piece
-
-        border_idxs1, border_idxs2 = self.get_match_border_idxs(key1, key2)
-        if border_idxs1 is None:
-            return -1
-
-        border1 = piece1.contour[border_idxs1].round().astype(int)
-        border2 = piece2.contour[border_idxs2].round().astype(int)
-
-        values1 = piece1.img_avg[border1[:, 0], border1[:, 1]]
-        values2 = piece2.img_avg[border2[:, 0], border2[:, 1]]
-
-        values1 = gaussian_filter1d(values1, 10, axis=0)
-        values2 = gaussian_filter1d(values2, 10, axis=0)
-
-        values_diff = np.abs(values1 - values2)
-        return np.mean(values_diff * values_diff)
-
-    @cached_property
-    def color_dist(self):
-        dists = []
-        for key1, key2 in combinations(self.piece_ids, 2):
-            s = self.get_match_color_dist(key1, key2)
-            if s != -1:
-                dists.append(s)
-
-        if len(dists) == 0:
-            return 0.000001
-        return np.max(dists)
-
-    @cached_property
-    def neighbor_matrix(self):
-        piece_ids = list(self.piece_ids)
-        matrix = np.full([len(self.pieces)] * 2, False)
-        for i1, i2 in combinations(range(len(piece_ids)), 2):
-            complexity = self.get_match_complexity(piece_ids[i1], piece_ids[i2])
-            if complexity == 0:
-                continue
-            matrix[i1, i2] = True
-            matrix[i2, i1] = True
-
-        return matrix
-
-    @cached_property
-    def avg_neighbor_count(self):
-        return np.sum(self.neighbor_matrix, axis=0).mean()
-
-    def draw(self, draw_contours: bool = False) -> np.ndarray:
-        min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
-
-        piece_imgs = []
-        center_positions = []
-        for piece in self.pieces.values():
-            transformation = piece.transformation
-            piece = piece.piece
-            deg_angle = np.rad2deg(transformation.rotation_angle)
-            rot_img = rotate(
-                np.where(piece.mask[:, :, np.newaxis], piece.img, -1),
-                -deg_angle,
-                resize=True,
-                mode="constant",
-                cval=-1,
+        def get_image_path(i, cluster):
+            image_name = (
+                f"{name}_{i:03d}_score{cluster.score:.2f}"
+                + f"_color{cluster.color_dist:.3f}_dist{cluster.dist:.3f}"
+                + f"_complexity{cluster.complexity:.3f}.png"
             )
+            return os.path.join(base_dir, image_name)
 
-            # Crop the image symmetrically to keep the center position
-            col, row, w, h = cv.boundingRect((rot_img[:, :, 0] != -1).astype("uint8"))
-            row = min(row, rot_img.shape[0] - h - row)
-            col = min(col, rot_img.shape[1] - w - col)
-            h = rot_img.shape[0] - 2 * row
-            w = rot_img.shape[1] - 2 * col
-            rot_img = rot_img[
-                row : rot_img.shape[0] - row, col : rot_img.shape[1] - col
-            ]
+        for i, cluster in enumerate(clusters):
+            img = np_to_pil(cluster.draw())
+            img.save(get_image_path(i, cluster))
 
-            piece_imgs.append(rot_img)
 
-            center_orig = (piece.contour.max(axis=0) + piece.contour.min(axis=0)) / 2
-            center_target = transformation.apply(center_orig)
-            center_positions.append(center_target.round().astype(int))
+def cluster_can_be_trusted(
+    cluster: Cluster, complexity_threshold, dist_threshold, color_threshold
+):
+    return (
+        cluster.complexity > complexity_threshold * (len(cluster.piece_ids) - 1)
+        and cluster.dist < dist_threshold
+        and cluster.color_dist < color_threshold
+    )
 
-            min_row = min(min_row, center_target[0] - rot_img.shape[0] / 2)
-            min_col = min(min_col, center_target[1] - rot_img.shape[1] / 2)
-            max_row = max(max_row, center_target[0] + rot_img.shape[0] / 2)
-            max_col = max(max_col, center_target[1] + rot_img.shape[1] / 2)
 
-        offset = np.array((min_row, min_col))
-        size = (int(round(max_row - min_row)), int(round(max_col - min_col)), 3)
-        img = np.ones(size)
-
-        for piece_img, center_pos in zip(piece_imgs, center_positions):
-            top_left = np.maximum(
-                0, center_pos - offset - (np.array(piece_img.shape[:2]) // 2)
-            ).astype(int)
-            img_crop = img[
-                top_left[0] : top_left[0] + piece_img.shape[0],
-                top_left[1] : top_left[1] + piece_img.shape[1],
-            ]
-            if img_crop.shape != piece_img.shape:
-                piece_img = piece_img[: img_crop.shape[0], : img_crop.shape[1]]
-            img[
-                top_left[0] : top_left[0] + piece_img.shape[0],
-                top_left[1] : top_left[1] + piece_img.shape[1],
-            ] = np.where(piece_img < 0, img_crop, piece_img)
-
-        if draw_contours:
-            contours = [
-                value[1].apply(value[0].contour) for value in self.pieces.values()
-            ]
-            contours = (np.concatenate(contours) - offset).round().astype(int)
-            contours = contours[(contours[:, 0] < size[0]) & (contours[:, 1] < size[1])]
-            img_contour = np.ones((size[0], size[1]))
-            img_contour = draw_contour(contours, img_contour)
-            img = np.where(
-                img_contour[:, :, np.newaxis] == 0, np.array([[[1, 0, 0]]]), img
+def matches_checker(
+    matches: list[Match],
+    queue: Queue,
+    cluster_scorer: ClusterScorer,
+    config: dict,
+    icp_max_iters: int,
+    icp_min_change: 0.5,
+) -> None:
+    try:
+        for match in matches:
+            match = match.verify(
+                config["border_dist_tol"],
+                icp_max_iters=icp_max_iters,
+                icp_min_change=icp_min_change,
             )
-        return img
-
-    @cached_property
-    def graph(self):
-        graph = PyGraph()
-        graph.add_nodes_from(list(self.piece_ids))
-        edges = np.where(self.neighbor_matrix)
-        graph.add_edges_from(list(zip(edges[0], edges[1], [None] * len(edges[0]))))
-        return graph
+            if match is not None and match.valid:
+                cluster = match.to_cluster(cluster_scorer, **config)
+                cluster = cluster.finetune_transformations(3)
+                if cluster.complexity >= 1:
+                    queue.put(cluster)
+    except Exception as e:
+        print(e.with_traceback())
+    finally:
+        queue.put(None)

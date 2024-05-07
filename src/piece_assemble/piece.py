@@ -49,16 +49,19 @@ class Piece:
             self.img_avg = rank.mean(self.img, footprint, mask=mask_eroded)
 
         # Dilate mask to compensate for natural erosion of pieces
-        contour = extract_contours(dilation(self.mask, diamond(1)))[0]
+        contours = extract_contours(dilation(self.mask, diamond(1)))
+        outline_contour = contours[0]
+        holes = contours[1]
 
-        self.contour = smooth_contours(contour, sigma)
-        self.polygon = geometry.Polygon(
-            approximate_polygon(self.contour, polygon_approximation_tolerance)
-        )
+        self.contour = smooth_contours(outline_contour, sigma)
+        self.holes = [smooth_contours(hole, sigma) for hole in holes if len(hole) > 100]
 
         self.segments, self.descriptor = self.descriptor_extractor.extract(
             self.contour, self.img_avg
         )
+
+        self._get_polygon_approximation(polygon_approximation_tolerance)
+
         self.contour_segment_idxs = np.full(len(self.contour), -1)
         for i, segment in enumerate(self.segments):
             if segment.interval[0] < segment.interval[1]:
@@ -66,6 +69,50 @@ class Piece:
             else:
                 self.contour_segment_idxs[segment.interval[0] :] = i
                 self.contour_segment_idxs[: segment.interval[1]] = i
+
+        self._extract_hole_descriptors()
+
+    def _get_polygon_approximation(
+        self, polygon_approximation_tolerance: float
+    ) -> None:
+        self.polygon = geometry.Polygon(
+            approximate_polygon(self.contour, polygon_approximation_tolerance)
+        )
+        hole_polygons = [
+            geometry.Polygon(approximate_polygon(hole, polygon_approximation_tolerance))
+            for hole in self.holes
+        ]
+
+        for hole_polygon in hole_polygons:
+            self.polygon = self.polygon.difference(hole_polygon)
+
+    def _extract_hole_descriptors(self) -> None:
+        hole_segments = []
+        hole_descriptors = []
+
+        for hole in self.holes:
+            segments, descriptor = self.descriptor_extractor.extract(hole, self.img_avg)
+            hole_segments.append(segments)
+            hole_descriptors.append(descriptor)
+            for segment in segments:
+                segment.offset = len(self.contour)
+
+            self.descriptor = np.concatenate([self.descriptor, descriptor])
+            self.contour = np.concatenate([self.contour, hole])
+
+            hole_segment_idxs = np.full(len(hole), -1)
+            for i, segment in enumerate(segments):
+                if segment.interval[0] < segment.interval[1]:
+                    hole_segment_idxs[segment.interval[0] : segment.interval[1]] = i
+                else:
+                    hole_segment_idxs[segment.interval[0] :] = i
+                    hole_segment_idxs[: segment.interval[1]] = i
+            hole_segment_idxs += len(self.segments)
+            self.contour_segment_idxs = np.concatenate(
+                [self.contour_segment_idxs, hole_segment_idxs]
+            )
+
+            self.segments.extend(segments)
 
     def get_segment_lengths(self) -> np.ndarray:
         def arc_len(arc: ApproximatingArc):

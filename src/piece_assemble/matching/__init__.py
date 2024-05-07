@@ -55,10 +55,9 @@ def find_all_matches_with_preprocessing(
     n_processes: int = 4,
 ) -> list[Match]:
     matches = [
-        find_matches(piece1, piece2, descriptor_extractor, 1)[:50]
+        find_matches(piece1, piece2, descriptor_extractor)[:50]
         for piece1, piece2 in combinations(pieces, 2)
     ]
-
     with Pool(n_processes) as p:
         matches = p.map(
             _filter_initial,

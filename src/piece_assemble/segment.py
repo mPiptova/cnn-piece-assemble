@@ -5,10 +5,11 @@ from piece_assemble.types import Interval, Point, Points
 
 
 class Segment:
-    def __init__(self, interval: Interval, contour: Points):
+    def __init__(self, interval: Interval, contour: Points, offset: int = 0):
         self.interval = interval
+        self.offset = offset
         ex_interval = extend_interval(interval, len(contour))
-        idxs = np.arange(ex_interval[0], ex_interval[1]) % len(contour)
+        idxs = np.arange(ex_interval[0], ex_interval[1]) % len(contour) + offset
         self.contour = contour[idxs]
 
     def __len__(self) -> int:

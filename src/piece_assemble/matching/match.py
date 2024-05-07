@@ -84,8 +84,15 @@ class Match:
         if self._ios(self.initial_transformation) > ios_tol:
             self.valid = False
             return False
+        return True
 
-    def verify(self, dist_tol: float, ios_tol: float = 0.02) -> Match | None:
+    def verify(
+        self,
+        dist_tol: float,
+        ios_tol: float = 0.02,
+        icp_max_iters: int = 30,
+        icp_min_change: float = 0.5,
+    ) -> Match | None:
         """Returns more precise Match or None if invalid.
 
         Parameters
@@ -113,7 +120,12 @@ class Match:
             return
 
         transformation = icp(
-            self.piece1.contour, self.piece2.contour, transformation, dist_tol * 4
+            self.piece1.contour,
+            self.piece2.contour,
+            transformation,
+            dist_tol * 4,
+            icp_max_iters,
+            icp_min_change,
         )
 
         transformed_contour = transformation.apply(self.piece1.contour)

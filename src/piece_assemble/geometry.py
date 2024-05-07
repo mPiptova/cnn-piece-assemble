@@ -250,6 +250,8 @@ def icp(
     points2: Points,
     init_transformation: Transformation,
     dist_tol: float = 20,
+    max_iters: int = 30,
+    min_change: float = 0.5,
 ) -> Transformation:
     """Find transformation between two sets of points using Iterative Closest Point
     algorithm
@@ -275,11 +277,11 @@ def icp(
     points_transformed = init_transformation.apply(points1)
 
     total_transformation = init_transformation
-    for _ in range(20):
+    for _ in range(max_iters):
         t = icp_iteration(points_transformed, tree, dist_tol)
         total_transformation = total_transformation.compose(t)
         contours_new = t.apply(points_transformed)
-        if np.linalg.norm(contours_new - points_transformed, axis=1).max() < 1:
+        if np.linalg.norm(contours_new - points_transformed, axis=1).max() < min_change:
             break
         points_transformed = contours_new
 
@@ -381,7 +383,7 @@ class Transformation:
         self,
         other: Transformation,
         angle_tol: float = 0.17,
-        translation_tol: float = 15,
+        translation_tol: float = 21,
     ) -> bool:
         return (
             abs(self.rotation_angle - other.rotation_angle) < angle_tol
