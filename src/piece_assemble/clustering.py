@@ -35,12 +35,19 @@ class Clustering:
         self.set_logging(None)
         self.random = random.Random()
 
+    @property
+    def best_cluster(self) -> Cluster | None:
+        if len(self.clusters) == 0:
+            return None
+        return self.clusters[0]
+
     def reset(self, reset_all_matches: bool = False) -> None:
         self.clusters = []
         self.trusted_clusters = []
         self._i = 0
         self.all_pair_clusters = {}
         self.cluster_history = []
+        self.assembled = False
 
         if reset_all_matches:
             self.all_matches = None
@@ -73,7 +80,7 @@ class Clustering:
         n_processes: int = 4,
         min_complexity: int = 2,
         n_used_matches: int = 40000,
-    ) -> None:
+    ) -> Cluster | None:
         if self.all_matches is None:
             self.find_candidate_matches(n_used_matches)
 
@@ -101,6 +108,8 @@ class Clustering:
 
             self._workers_finished = 0
             for i in range(self._i, self._i + n_iters):
+                if self.assembled:
+                    break
                 self._i = i + 1
                 self.run_iteration(
                     i,
@@ -109,6 +118,7 @@ class Clustering:
                     min_complexity,
                     queue,
                 )
+        return self.best_cluster
 
     def run_iteration(
         self,
@@ -162,14 +172,15 @@ class Clustering:
 
         self.clusters.sort(key=lambda cluster: cluster.score, reverse=True)
 
-        if max_cluster_size >= len(self.all_ids):
-            self.clusters = self.apply_trusted_clusters(self.clusters)
-
-        # self.clusters = self.cluster_selection(self.clusters)
-        # self.clusters = self.recombine(self.clusters, max_cluster_size)
+        self.clusters = self.cluster_selection(self.clusters)
 
         self.store_iteration(f"{i}iter", self.clusters)
         self.cluster_history.append(self.clusters)
+
+        if self._worker_count == self._workers_finished and len(previous_clusters) == 0:
+            self.assembled = True
+        if len(self.best_cluster.piece_ids) == len(self.all_ids):
+            self.assembled = True
 
     def get_new_pair_clusters(
         self,
@@ -193,10 +204,6 @@ class Clustering:
 
                 if new_cluster is None:
                     self._workers_finished += 1
-                    # print(
-                    #     f"{self._workers_finished} workers of"
-                    #     + f" {self._worker_count} finished"
-                    # )
                     continue
                 new_cluster = self.process_new_cluster(
                     new_cluster, trusted_cluster_config, min_complexity
