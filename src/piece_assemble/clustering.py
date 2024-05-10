@@ -476,22 +476,44 @@ class Clustering:
                     self.trusted_clusters.remove(trusted_cluster)
         return other_clusters
 
+    def _check_new_clusters(self, clusters) -> list[Cluster]:
+        selected_clusters = []
+        for cluster in clusters:
+            can_be_used = True
+            for trusted_cluster in self.trusted_clusters:
+                if cluster.piece_ids.isdisjoint(trusted_cluster.piece_ids):
+                    continue
+                if not cluster.can_be_merged(trusted_cluster):
+                    can_be_used = False
+                    break
+            if can_be_used:
+                selected_clusters.append(cluster)
+        return selected_clusters
+
     def find_applicable_previous_clusters(
         self, best_cluster: Cluster, max_count: int
     ) -> list[Cluster]:
         previous_cluster_list = []
+        cluster_pairs = best_cluster.get_neighbor_pairs()
         for keys, pair_previous_clusters in self.all_pair_clusters.items():
-            if len(keys.intersection(best_cluster.piece_ids)) == 1:
+            if keys not in cluster_pairs:
                 previous_cluster_list.extend(
                     [cluster["cluster"] for cluster in pair_previous_clusters]
                 )
+
+        previous_cluster_list = self._check_new_clusters(previous_cluster_list)
+        previous_cluster_list.sort(key=lambda cluster: cluster.score, reverse=True)
         if len(previous_cluster_list) > 0:
+            probabilities = [0.5**i for i in range(len(previous_cluster_list))]
+            probabilities[0] += 1 - sum(probabilities)
             previous_clusters = list(
                 np.random.choice(
-                    previous_cluster_list, min(max_count, len(previous_cluster_list))
+                    previous_cluster_list,
+                    min(max_count, len(previous_cluster_list)),
+                    replace=False,
+                    p=probabilities,
                 )
             )
-            previous_clusters = self.apply_trusted_clusters(previous_clusters)
             return previous_clusters
         return []
 

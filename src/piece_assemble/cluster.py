@@ -672,3 +672,11 @@ class Cluster:
         edges = np.where(self.neighbor_matrix)
         graph.add_edges_from(list(zip(edges[0], edges[1], [None] * len(edges[0]))))
         return graph
+
+    def get_neighbor_pairs(self):
+        neighbor_pairs = set()
+        for i, key1 in enumerate(self.piece_ids):
+            for j, key2 in enumerate(self.piece_ids):
+                if self.neighbor_matrix[i, j]:
+                    neighbor_pairs.add(frozenset({key1, key2}))
+        return neighbor_pairs
