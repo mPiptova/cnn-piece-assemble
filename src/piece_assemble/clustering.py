@@ -4,7 +4,6 @@ import random
 import shutil
 import time
 from ast import Match
-from itertools import combinations
 from multiprocessing import Manager, Pool, Queue
 
 import numpy as np
@@ -330,8 +329,7 @@ class Clustering:
             new_clusters_dict = {
                 frozenset(cluster.piece_ids): cluster for cluster in clusters
             }
-            cluster_combinations = list(combinations(clusters, 2))
-            random.shuffle(cluster_combinations)
+            self.random.shuffle(clusters)
 
             used_pieces = set()
             with tqdm(desc="Recombining", total=math.comb(len(clusters), 2)) as pbar:
