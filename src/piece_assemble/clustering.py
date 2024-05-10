@@ -329,30 +329,27 @@ class Clustering:
             used_pieces = set()
             with tqdm(desc="Recombining", total=math.comb(len(clusters), 2)) as pbar:
                 for i, c1 in enumerate(clusters[:-1]):
-                    if frozenset(c1.piece_ids) in used_pieces:
+                    key1 = frozenset(c1.piece_ids)
+                    if key1 in used_pieces:
                         pbar.update(len(clusters[i + 1 :]))
                         continue
                     for c2 in clusters[i + 1 :]:
                         pbar.update(1)
-                        if (
-                            frozenset(c1.piece_ids) in used_pieces
-                            or frozenset(c2.piece_ids) in used_pieces
-                        ):
+                        key2 = frozenset(c2.piece_ids)
+                        if key1 in used_pieces or key2 in used_pieces:
                             continue
 
                         new_cluster = self.combine(c1, c2, max_cluster_size)
                         if new_cluster is None:
                             continue
 
-                        indicator = frozenset(new_cluster.piece_ids)
-                        if indicator in new_clusters_dict.keys():
-                            if new_clusters_dict[indicator].score < new_cluster.score:
-                                new_clusters_dict[indicator] = new_cluster
+                        new_key = frozenset(new_cluster.piece_ids)
+                        if new_key in new_clusters_dict.keys():
+                            if new_clusters_dict[new_key].score < new_cluster.score:
+                                new_clusters_dict[new_key] = new_cluster
                         else:
-                            used_pieces.update(
-                                {frozenset(c1.piece_ids), frozenset(c2.piece_ids)}
-                            )
-                            new_clusters_dict[indicator] = new_cluster
+                            used_pieces.update({key1, key2})
+                            new_clusters_dict[new_key] = new_cluster
                             new_clusters_added = True
 
             if len(new_clusters_dict.values()) == len(clusters):
