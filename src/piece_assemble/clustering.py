@@ -90,15 +90,14 @@ class Clustering:
         queue = manager.Queue()
 
         with Pool(n_processes) as p:
-            batch_size = 100
-            self._worker_count = int(np.ceil(len(matches) / batch_size))
+            batch_size = int(np.ceil(len(matches) / n_processes))
+            self._worker_count = n_processes
             for j in range(0, len(matches), batch_size):
                 p.apply_async(
                     matches_checker,
                     args=(
                         matches[j : min(j + batch_size, len(matches))],
                         queue,
-                        self.cluster_scorer,
                         cluster_config,
                         icp_max_iters,
                         icp_min_change,
@@ -199,11 +198,16 @@ class Clustering:
                     time.sleep(1)
                     continue
 
-                new_cluster = queue.get()
-
-                if new_cluster is None:
+                new_match = queue.get()
+                if new_match is None:
                     self._workers_finished += 1
                     continue
+
+                new_cluster = new_match.to_cluster(
+                    self.cluster_scorer,
+                    **self.cluster_config,
+                    pieces_dict={piece.name: piece for piece in self.pieces},
+                )
                 new_cluster = self.process_new_cluster(
                     new_cluster, trusted_cluster_config, min_complexity
                 )
@@ -553,24 +557,20 @@ def cluster_can_be_trusted(
 def matches_checker(
     matches: list[Match],
     queue: Queue,
-    cluster_scorer: ClusterScorer,
     config: dict,
     icp_max_iters: int,
     icp_min_change: 0.5,
 ) -> None:
     try:
         for match in matches:
-            match = match.verify(
+            compact_match = match.verify(
                 config["border_dist_tol"],
                 icp_max_iters=icp_max_iters,
                 icp_min_change=icp_min_change,
             )
-            if match is not None and match.valid:
-                cluster = match.to_cluster(cluster_scorer, **config)
-                cluster = cluster.finetune_transformations(3)
-                if cluster.complexity >= 1:
-                    queue.put(cluster)
+            if compact_match is not None:
+                queue.put(compact_match)
     except Exception as e:
-        print(e.with_traceback())
+        print(e)
     finally:
         queue.put(None)

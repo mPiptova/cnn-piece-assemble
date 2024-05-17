@@ -27,8 +27,8 @@ def find_matches(
             dist=desc_dist[i, j],
             piece1=piece1,
             piece2=piece2,
-            index1=i,
-            index2=j,
+            idx1=i,
+            idx2=j,
         )
         for i, j in zip(idxs1, idxs2)
         if not np.isinf(desc_dist[i, j])

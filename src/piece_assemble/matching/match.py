@@ -3,30 +3,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 
-from scipy.spatial import KDTree
 from shapely import transform
 
-from piece_assemble.clustering import Cluster, ClusterScorer, TransformedPiece
+from piece_assemble.cluster import Cluster, ClusterScorer, TransformedPiece
 from piece_assemble.geometry import Transformation, fit_transform, icp
-from piece_assemble.matching.utils import get_initial_transformation
 from piece_assemble.piece import Piece
 
 
-@dataclass
 class Match:
     """Represents one match between two pieces."""
 
-    dist: float
-    piece1: Piece
-    piece2: Piece
-    index1: int
-    index2: int
-    transformation: Transformation | None = None
+    def __init__(self, piece1: Piece, piece2: Piece, idx1: int, idx2: int, dist: float):
+        self.dist = dist
+        self.id1 = piece1.name
+        self.id2 = piece2.name
+        self.contour1 = piece1.contour
+        self.contour2 = piece2.contour
 
-    def __post_init__(self):
-        self.key1 = self.piece1.name
-        self.key2 = self.piece2.name
-        self.valid = None
+        self.polygon1 = piece1.polygon
+        self.polygon2 = piece2.polygon
+        self.match_points = (
+            piece1.segments[idx1].contour[[0, -1]],
+            piece2.segments[idx2].contour[[-1, 0]],
+        )
 
     @cached_property
     def initial_transformation(self) -> Transformation:
@@ -41,9 +40,7 @@ class Match:
         transformation
             Transformation which maps `piece1` to match `piece2`.
         """
-        return get_initial_transformation(
-            self.piece1, self.piece2, self.index1, self.index2
-        )
+        return fit_transform(*self.match_points)
 
     def _ios(self, transformation: Transformation) -> float:
         """Computes intersection over smaller of matched pieces.
@@ -58,9 +55,9 @@ class Match:
         ios
             Intersection area / area of the smaller of two pieces.
         """
-        smaller_area = min(self.piece1.polygon.area, self.piece2.polygon.area)
-        polygon1 = transform(self.piece1.polygon, lambda pol: transformation.apply(pol))
-        return self.piece2.polygon.intersection(polygon1).area / smaller_area
+        smaller_area = min(self.polygon1.area, self.polygon2.area)
+        polygon1 = transform(self.polygon1, lambda pol: transformation.apply(pol))
+        return self.polygon2.intersection(polygon1).area / smaller_area
 
     def is_initial_transform_valid(self, ios_tol: float = 0.1) -> bool:
         """Returns bool indicated whether the initial transform is valid.
@@ -79,10 +76,7 @@ class Match:
         -------
         is_valid
         """
-        if self.valid is not None:
-            return self.valid
         if self._ios(self.initial_transformation) > ios_tol:
-            self.valid = False
             return False
         return True
 
@@ -109,54 +103,43 @@ class Match:
         match
             Match with more accurate transformation estimation or None, if invalid.
         """
-        if self.valid is not None:
-            return self
         transformation = self.initial_transformation
 
         # If the intersection of the transformed polygons is too large, reject this
         # match and don't continue with the computation
         if self._ios(transformation) > max(0.1, ios_tol):
-            self.valid = False
-            return
+            return None
 
         transformation = icp(
-            self.piece1.contour,
-            self.piece2.contour,
+            self.contour1,
+            self.contour2,
             transformation,
-            dist_tol * 4,
+            dist_tol,
             icp_max_iters,
             icp_min_change,
         )
 
-        transformed_contour = transformation.apply(self.piece1.contour)
-        tree = KDTree(self.piece2.contour)
-
-        nearest_dist, _ = tree.query(transformed_contour, k=1)
-        near_mask = nearest_dist < dist_tol
-
         # Check the intersection area again, this time with more strict threshold
-        if self._ios(transformation) > 0.02:
-            self.valid = False
-            return
+        if self._ios(transformation) > ios_tol:
+            return None
 
-        dist = nearest_dist[near_mask].mean()
-        self.valid = True
+        return CompactMatch(self.id1, self.id2, transformation)
 
-        self.transformation = transformation
-        self.dist = dist
 
-        new_match = Match(
-            dist, self.piece1, self.piece2, self.index1, self.index2, transformation
-        )
-        new_match.valid = True
+@dataclass
+class CompactMatch:
+    """Compact match representation used to save time in parallel processing"""
 
-        return new_match
+    id1: str
+    id2: str
+    transformation: Transformation
 
     def to_cluster(
         self,
         scorer: ClusterScorer,
         border_dist_tol: float,
         self_intersection_tol: float,
+        pieces_dict: dict[Piece],
     ) -> Cluster:
         """Converts Match to Cluster.
 
@@ -172,15 +155,19 @@ class Match:
             Self-intersection tolerance. If the relative intersection of any two
             pieces is above this threshold, the cluster is considered invalid.
             (Some relaxation is done depending on the total number of pieces.)
-
+        pieces_dict
+            Dictionary of all pieces.
 
         Returns
         -------
         cluster
         """
+        piece1 = pieces_dict[self.id1]
+        piece2 = pieces_dict[self.id2]
+
         pieces = {
-            self.key1: TransformedPiece(self.piece1, self.transformation),
-            self.key2: TransformedPiece(self.piece2, Transformation.identity()),
+            self.id1: TransformedPiece(piece1, self.transformation),
+            self.id2: TransformedPiece(piece2, Transformation.identity()),
         }
         return Cluster(
             pieces,
@@ -188,27 +175,3 @@ class Match:
             border_dist_tol=border_dist_tol,
             self_intersection_tol=self_intersection_tol,
         )
-
-
-def get_initial_transformation(
-    piece1: Piece, piece2: Piece, idx1: int, idx2: int
-) -> Transformation:
-    """Find initial transformation based only on segment match.
-
-    Parameters
-    ----------
-    piece1
-    piece2
-    idx1
-        Index of the matched segment of `piece1`
-    idx2
-        Index of the matched segment of `piece2`
-
-    Returns
-    -------
-    transformation
-        A transformation mapping `piece1.segments[idx1]` to `piece2.segments[idx2]`
-    """
-    points1 = piece1.segments[idx1].contour[[0, -1]]
-    points2 = piece2.segments[idx2].contour[[-1, 0]]
-    return fit_transform(points1, points2)
