@@ -320,32 +320,34 @@ class Cluster:
 
         """
         was_fixed = False
-        common_keys = self.piece_ids.intersection(other.piece_ids)
+        if len(other.pieces) == 2:
+            try_fix = False
 
-        if len(common_keys) == 0:
+        t1, t2 = self.find_unifying_transform(other)
+        if t1 is None:
             raise DisjunctClustersError(
                 f"Pieces {self.piece_ids} and {other.piece_ids} "
                 "have no common elements."
             )
 
-        common_key = common_keys.pop()
-        cluster1 = self.transform(self.pieces[common_key].transformation.inverse())
-        cluster2 = other.transform(other.pieces[common_key].transformation.inverse())
+        cluster1 = self.transform(t1)
+        cluster2 = other.transform(t2)
 
         parents = [cluster1, cluster2]
 
+        common_keys = list(self.piece_ids.intersection(other.piece_ids))
         for key in common_keys:
             if not cluster1.pieces[key].transformation.is_close(
                 cluster2.pieces[key].transformation,
                 self.rotation_tol,
                 self.translation_tol,
             ):
-                if not try_fix or len(cluster2.pieces) == 2:
+                if not try_fix:
                     raise ConflictingTransformationsError(
                         f"Transformations {cluster1.pieces[key].transformation} and "
                         f"{cluster2.pieces[key].transformation} are not close."
                     )
-                parents = None
+                parents = [cluster1]
                 was_fixed = True
                 cluster2.pieces.pop(key)
 
@@ -376,6 +378,7 @@ class Cluster:
             was_fixed = True
 
             new_cluster = new_cluster._fix_overlapping_pieces(self.piece_ids)
+            new_cluster.parents = [cluster1]
 
         if was_fixed:
             # New cluster may be disconnected
