@@ -99,15 +99,19 @@ class Cluster:
         self,
         pieces: dict[str, TransformedPiece],
         scorer: ClusterScorer,
+        self_intersection_tol: float,
+        border_dist_tol: float,
+        rotation_tol: float,
+        translation_tol: float,
         parents: list[Cluster] = None,
-        self_intersection_tol: float = 0.01,
-        border_dist_tol: float = 2,
     ) -> None:
         self.pieces = pieces
         self.parents = parents
         self.scorer = scorer
         self.self_intersection_tol = self_intersection_tol
         self.border_dist_tol = border_dist_tol
+        self.rotation_tol = rotation_tol
+        self.translation_tol = translation_tol
 
     @cached_property
     def score(self) -> float:
@@ -138,9 +142,11 @@ class Cluster:
         new_cluster = Cluster(
             self.pieces.copy(),
             self.scorer,
-            self.parents,
             self.self_intersection_tol,
             self.border_dist_tol,
+            self.rotation_tol,
+            self.translation_tol,
+            self.parents,
         )
         new_cluster.border_length = self.border_length
         return new_cluster
@@ -152,9 +158,11 @@ class Cluster:
         new_cluster = Cluster(
             new_pieces,
             self.scorer,
-            [self],
             self.self_intersection_tol,
             self.border_dist_tol,
+            self.rotation_tol,
+            self.translation_tol,
+            parents=[self],
         )
         new_cluster.border_length = self.border_length
         return new_cluster
@@ -251,9 +259,11 @@ class Cluster:
         return Cluster(
             new_pieces,
             self.scorer,
-            None,
             self.self_intersection_tol,
             self.border_dist_tol,
+            self.rotation_tol,
+            self.translation_tol,
+            parents=None,
         )
 
     def merge(
@@ -295,7 +305,9 @@ class Cluster:
 
         for key in common_keys:
             if not cluster1.pieces[key].transformation.is_close(
-                cluster2.pieces[key].transformation
+                cluster2.pieces[key].transformation,
+                self.rotation_tol,
+                self.translation_tol,
             ):
                 if not try_fix or len(cluster2.pieces) == 2:
                     raise ConflictingTransformationsError(
@@ -311,9 +323,11 @@ class Cluster:
         new_cluster = Cluster(
             new_pieces,
             self.scorer,
-            parents,
             self.self_intersection_tol,
             self.border_dist_tol,
+            self.rotation_tol,
+            self.translation_tol,
+            parents,
         )
 
         if finetune_iters > 0:
@@ -375,7 +389,9 @@ class Cluster:
 
         return all(
             cluster1.pieces[key].transformation.is_close(
-                cluster2.pieces[key].transformation
+                cluster2.pieces[key].transformation,
+                self.rotation_tol,
+                self.translation_tol,
             )
             for key in common_keys
         )
@@ -426,9 +442,11 @@ class Cluster:
         return Cluster(
             new_pieces,
             self.scorer,
-            self.parents,
             self.self_intersection_tol,
             self.border_dist_tol,
+            self.rotation_tol,
+            self.translation_tol,
+            self.parents,
         )
 
     @cached_property
