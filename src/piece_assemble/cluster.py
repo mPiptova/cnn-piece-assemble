@@ -388,9 +388,11 @@ class Cluster:
                 new_cluster = Cluster(
                     new_pieces,
                     self.scorer,
-                    None,
                     self.self_intersection_tol,
                     self.border_dist_tol,
+                    self.rotation_tol,
+                    self.translation_tol,
+                    parents=None,
                 )
 
         return new_cluster
