@@ -266,6 +266,37 @@ class Cluster:
             parents=None,
         )
 
+    def find_unifying_transform(
+        self, other: Cluster
+    ) -> tuple[Transformation, Transformation]:
+        """Find transformations which unify the common pieces of two clusters.
+
+        Parameters
+        ----------
+        other
+
+        Returns
+        -------
+        t1, t2
+            Transformations such that when `t1` is applied to `self` and `t2` to the
+            `other`, the common matches perfectly overlap (if such transformations
+            exist)
+        """
+        common_keys = list(self.piece_ids.intersection(other.piece_ids))
+
+        if len(common_keys) == 0:
+            return None, None
+
+        common_keys.sort(
+            key=lambda key: self.pieces[key].piece.polygon.area, reverse=True
+        )
+        common_key = common_keys.pop()
+
+        return (
+            self.pieces[common_key].transformation.inverse(),
+            other.pieces[common_key].transformation.inverse(),
+        )
+
     def merge(
         self,
         other: Cluster,
