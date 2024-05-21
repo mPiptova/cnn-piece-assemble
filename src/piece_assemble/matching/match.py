@@ -137,8 +137,7 @@ class CompactMatch:
     def to_cluster(
         self,
         scorer: ClusterScorer,
-        border_dist_tol: float,
-        self_intersection_tol: float,
+        cluster_config: dict,
         pieces_dict: dict[Piece],
     ) -> Cluster:
         """Converts Match to Cluster.
@@ -172,6 +171,5 @@ class CompactMatch:
         return Cluster(
             pieces,
             scorer=scorer,
-            border_dist_tol=border_dist_tol,
-            self_intersection_tol=self_intersection_tol,
+            **cluster_config,
         )
