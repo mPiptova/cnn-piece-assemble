@@ -397,28 +397,22 @@ class Cluster:
 
         return new_cluster
 
-    def can_be_merged(self, other: Cluster) -> Cluster:
+    def common_pieces_match(self, other: Cluster) -> bool:
         """Checks whether two clusters can be merged.
 
         Returns True if they share at least one piece and the relative position of
         the shared pieces is the same (within some tolerance).
-
-        Parameters
-        ----------
-        other
-
-        Returns
-        -------
-        Whether this cluster can be merged with the other cluster.
         """
-
         common_keys = self.piece_ids.intersection(other.piece_ids)
         if len(common_keys) == 0:
             return False
 
-        common_key = common_keys.pop()
-        cluster1 = self.transform(self.pieces[common_key].transformation.inverse())
-        cluster2 = other.transform(other.pieces[common_key].transformation.inverse())
+        t1, t2 = self.find_unifying_transform(other)
+        if t1 is None:
+            return False
+
+        cluster1 = self.transform(t1)
+        cluster2 = other.transform(t2)
 
         return all(
             cluster1.pieces[key].transformation.is_close(
@@ -428,6 +422,56 @@ class Cluster:
             )
             for key in common_keys
         )
+
+    def can_be_merged(self, other: Cluster) -> bool:
+        """Checks whether two clusters can be merged.
+
+        Returns True if they share at least one piece and the relative position of
+        the shared pieces is the same (within some tolerance) and if they won't
+        overlap after merging.
+
+        Parameters
+        ----------
+        other
+
+        Returns
+        -------
+        Whether this cluster can be merged with the other cluster.
+        """
+        common_keys = self.piece_ids.intersection(other.piece_ids)
+        if len(common_keys) == 0:
+            return False
+
+        t1, t2 = self.find_unifying_transform(other)
+        if t1 is None:
+            return False
+
+        cluster1 = self.transform(t1)
+        cluster2 = other.transform(t2)
+
+        if not all(
+            cluster1.pieces[key].transformation.is_close(
+                cluster2.pieces[key].transformation,
+                self.rotation_tol,
+                self.translation_tol,
+            )
+            for key in common_keys
+        ):
+            return False
+
+        new_pieces = cluster1.pieces
+        new_pieces.update(cluster2.pieces)
+        new_cluster = Cluster(
+            new_pieces,
+            self.scorer,
+            self.self_intersection_tol,
+            self.border_dist_tol,
+            self.rotation_tol,
+            self.translation_tol,
+            [self, other],
+        )
+
+        return new_cluster.self_intersection < self.self_intersection_tol
 
     def finetune_transformations(self, num_iters: int = 3):
         """Improve transformations using ICP algorithm.
