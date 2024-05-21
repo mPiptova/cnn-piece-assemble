@@ -120,7 +120,7 @@ class Cluster:
     @cached_property
     def border(self) -> Points:
         border = []
-        for (key1, key2) in self.matches_border_idxs.keys():
+        for key1, key2 in self.matches_border_idxs.keys():
             b1, b2 = self.get_match_border_coordinates(key1, key2)
             if b1 is None:
                 continue
@@ -542,14 +542,16 @@ class Cluster:
 
         if self.parents is not None:
             for parent in self.parents:
-                matches_border_dict.update(parent.matches_border_idxs)
+                parent_dict = {
+                    keys: value
+                    for keys, value in parent.matches_border_idxs
+                    if set(keys).issubset(self.piece_ids)
+                }
+                matches_border_dict.update(parent_dict)
 
         for key1, key2 in combinations(self.piece_ids, 2):
-
-            if (key1, key2) in matches_border_dict.keys() or (
-                key2,
-                key1,
-            ) in matches_border_dict.keys():
+            key1, key2 = min(key1, key2), max(key1, key2)
+            if (key1, key2) in matches_border_dict.keys():
                 continue
             piece1 = self.pieces[key1].piece
             piece2 = self.pieces[key2].piece
