@@ -390,6 +390,18 @@ class Transformation:
             and np.linalg.norm(self.translation - other.translation) < translation_tol
         )
 
+    def to_dict(self) -> dict:
+        """Return the transformation parameters as a dictionary."""
+        return {
+            "rotation_angle": self.rotation_angle,
+            "translation": list(self.translation),
+        }
+
+    @classmethod
+    def from_dict(cls, params: dict) -> Transformation:
+        """Create transfromation from parameters stored in dictionary."""
+        return cls(params["rotation_angle"], np.array(params["translation"]))
+
 
 def get_common_contour_idxs(
     contour1: Points, contour2: Points, tol: float = 10

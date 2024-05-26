@@ -780,3 +780,17 @@ class Cluster:
                 if self.neighbor_matrix[i, j]:
                     neighbor_pairs.add(frozenset({key1, key2}))
         return neighbor_pairs
+
+    def to_dict(self) -> dict:
+        """Return this cluster as a dictionary."""
+        dict_repr = {"transformed_pieces": [], "neighbors": []}
+        for piece_id, piece in self.pieces.items():
+            piece_dict = {
+                "id": piece_id,
+                "transformation": piece.transformation.to_dict(),
+            }
+            dict_repr["transformed_pieces"].append(piece_dict)
+
+        for neighbor_pair in self.get_neighbor_pairs():
+            dict_repr["neighbors"].append(list(neighbor_pair))
+        return dict_repr
