@@ -28,16 +28,12 @@ class ClusterScorer:
         w_complexity: float,
         w_color_dist: float,
         w_dist: float,
-        w_hole_area: float,
-        min_allowed_hole_size: float,
         w_border_length: float,
     ) -> None:
         self.w_convexity = w_convexity
         self.w_complexity = w_complexity
         self.w_color_dist = w_color_dist
         self.w_dist = w_dist
-        self.w_hole_area = w_hole_area
-        self.min_allowed_hole_size = min_allowed_hole_size
         self.w_border_length = w_border_length
 
     def __call__(self, cluster: Cluster) -> float:
@@ -47,18 +43,12 @@ class ClusterScorer:
         )
         color_score = -cluster.color_dist * self.w_color_dist
         dist_score = -cluster.dist * self.w_dist
-        hole_score = (
-            0
-            if cluster.max_hole_area > self.min_allowed_hole_size
-            else -cluster.max_hole_area * self.w_hole_area
-        )
         border_length_score = cluster.border_length * self.w_border_length
         return (
             convexity_score
             + complexity_score
             + color_score
             + dist_score
-            + hole_score
             + border_length_score
         )
 
@@ -614,8 +604,7 @@ class Cluster:
             return idxs1, self.pieces[key1].piece
         return idxs2, self.pieces[key2].piece
 
-    # TODO: This function can be somewhere else
-    def _get_curve_winding_number(self, curve: Points) -> float:
+    def _get_curve_winding_angle(self, curve: Points) -> float:
         curve = smooth_contours(curve, 3, False)
         curve_diff = curve[:-1] - curve[1:]
 
@@ -632,11 +621,9 @@ class Cluster:
             return 0
 
         segment_count = piece.get_segment_count(idxs)
-        winding_number = self._get_curve_winding_number(piece.contour[idxs])
+        winding_angle = self._get_curve_winding_angle(piece.contour[idxs])
 
-        # TODO: This wasn't tested with negative pieces. Simply omitting winding number
-        # corresponds to the former functionality.
-        return segment_count * winding_number
+        return segment_count * winding_angle
 
     @cached_property
     def complexity(self):

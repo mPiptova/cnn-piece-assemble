@@ -349,6 +349,8 @@ def get_validity_intervals(
             np.min(ends_x[(ends_y == i) & (ends_x >= i)]) + 1,
         )
         if not np.isinf(radii[i])
+        and len(starts_x[(starts_y == i) & (starts_x <= i)]) != 0
+        and len(ends_x[(ends_y == i) & (ends_x >= i)]) != 0
         else (i, i + 1)
         for i in range(len(radii))
     ]

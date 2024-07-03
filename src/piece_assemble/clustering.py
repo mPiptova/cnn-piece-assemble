@@ -64,6 +64,11 @@ class Clustering:
         self._store_old_matches = store_old_matches
         self._store_trusted_clusters = store_trusted_clusters
 
+        try:
+            os.mkdir(output_images_path)
+        except Exception:
+            pass
+
     def find_candidate_matches(self, n_matches: int = 40000) -> None:
         self.all_matches = find_all_matches_with_preprocessing(
             self.pieces, self.descriptor_extractor
@@ -313,7 +318,7 @@ class Clustering:
         pair_clusters: list[Cluster],
         max_cluster_size: int | None = None,
     ) -> list[Cluster]:
-        clusters = self.apply_trusted_clusters(clusters, max_cluster_size)
+        clusters = self.apply_trusted_clusters(clusters)
         clusters = self.cluster_selection(clusters)
         pair_clusters.sort(key=lambda cluster: cluster.score, reverse=True)
         for c1 in tqdm(pair_clusters, desc="Using new matches"):
@@ -335,7 +340,7 @@ class Clustering:
                 clusters_dict[key] = new_cluster
 
             clusters = list(clusters_dict.values())
-            clusters = self.apply_trusted_clusters(clusters, max_cluster_size)
+            clusters = self.apply_trusted_clusters(clusters)
             clusters = self.cluster_selection(clusters)
         return clusters
 
@@ -404,7 +409,7 @@ class Clustering:
             if prev_cluster_len == len(clusters):
                 new_clusters_added = False
 
-        clusters = self.apply_trusted_clusters(clusters, max_cluster_size)
+        clusters = self.apply_trusted_clusters(clusters)
         if len(clusters) == 0:
             return self.trusted_clusters
         return clusters
@@ -524,10 +529,26 @@ class Clustering:
         return selected_clusters
 
     def find_applicable_previous_clusters(
-        self, best_cluster: Cluster, max_count: int
+        self, cluster: Cluster, max_count: int
     ) -> list[Cluster]:
+        """
+        Finds the suitable previously find pair clusters for the given cluster.
+
+        Parameters
+        ----------
+        best_cluster
+            The best cluster.
+        max_count
+            The maximum number of clusters to return.
+
+        Returns
+        -------
+        list
+            A list of applicable previous clusters.
+        """
+
         previous_cluster_list = []
-        cluster_pairs = best_cluster.get_neighbor_pairs()
+        cluster_pairs = cluster.get_neighbor_pairs()
         for keys, pair_previous_clusters in self.all_pair_clusters.items():
             if keys not in cluster_pairs:
                 pair_previous_clusters = [
@@ -536,9 +557,9 @@ class Clustering:
                 pair_previous_clusters.sort(
                     key=lambda cluster: cluster.score, reverse=True
                 )
-                if keys.issubset(best_cluster.piece_ids) and pair_previous_clusters[
+                if keys.issubset(cluster.piece_ids) and pair_previous_clusters[
                     0
-                ].common_pieces_match(best_cluster):
+                ].common_pieces_match(cluster):
                     continue
                 previous_cluster_list.append(pair_previous_clusters[0])
 
@@ -548,12 +569,12 @@ class Clustering:
             probabilities = np.array(
                 [
                     (cluster.score - worst_score) ** 4
-                    if cluster.piece_ids.intersection(best_cluster.piece_ids) == 1
+                    if cluster.piece_ids.intersection(cluster.piece_ids) == 1
                     else (cluster.score - worst_score)
                     for cluster in previous_cluster_list
                 ]
             )
-            probabilities = probabilities**0.5
+            probabilities = probabilities**0.5 + +0.0000001
             probabilities = probabilities / sum(probabilities)
 
             previous_clusters = list(
@@ -568,6 +589,17 @@ class Clustering:
         return []
 
     def store_iteration(self, name: str, clusters: list[Cluster]) -> None:
+        """
+        Store the given clusters in the specified directory.
+
+        Parameters
+        ----------
+        name
+            The name of the directory.
+        clusters
+            The list of clusters to be stored.
+
+        """
         if self._output_path is None:
             return
 
@@ -593,8 +625,31 @@ class Clustering:
 
 
 def cluster_can_be_trusted(
-    cluster: Cluster, complexity_threshold, dist_threshold, color_threshold
+    cluster: Cluster,
+    complexity_threshold: float,
+    dist_threshold: float,
+    color_threshold: float,
 ):
+    """
+    Check if a cluster can be trusted.
+
+    Parameters
+    ----------
+    cluster
+        The cluster to be checked.
+    complexity_threshold
+        The threshold for the cluster's complexity.
+    dist_threshold
+        The threshold for the cluster's distance.
+    color_threshold
+        The threshold for the cluster's color distance.
+
+    Returns
+    -------
+    bool
+        True if the cluster can be trusted, False otherwise.
+
+    """
     return (
         cluster.complexity > complexity_threshold * (len(cluster.piece_ids) - 1)
         and cluster.dist < dist_threshold
