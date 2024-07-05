@@ -741,7 +741,8 @@ class Cluster:
 
         if draw_contours:
             contours = [
-                value[1].apply(value[0].contour) for value in self.pieces.values()
+                piece.transformation.apply(piece.piece.contour)
+                for piece in self.pieces.values()
             ]
             contours = (np.concatenate(contours) - offset).round().astype(int)
             contours = contours[(contours[:, 0] < size[0]) & (contours[:, 1] < size[1])]
