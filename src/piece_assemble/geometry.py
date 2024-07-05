@@ -189,9 +189,7 @@ def interval_difference(
     if is_in_cyclic_interval(
         interval2[0], interval1, cycle_length
     ) and is_in_cyclic_interval(interval2[1], interval1, cycle_length):
-        # complicated case, not supported
-        print(interval1, interval2)
-        raise ValueError("Not supported")
+        return (interval1[0], interval1[0])
 
     if is_in_cyclic_interval(interval2[0], interval1, cycle_length):
         return (interval1[0], interval2[0])
