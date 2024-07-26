@@ -612,6 +612,7 @@ class Cluster:
             return 0
 
         curve_angle = np.arctan2(curve_diff[:, 0], curve_diff[:, 1])
+        curve_angle = np.unwrap(curve_angle, discont=np.pi)
         return (curve_angle.max() - curve_angle.min()) / (2 * np.pi)
 
     def get_match_complexity(self, key1: str, key2: str):
