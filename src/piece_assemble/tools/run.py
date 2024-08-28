@@ -1,3 +1,12 @@
+""" Script for running the clustering algorithm.
+
+Example
+--------
+python src/piece_assemble/tools/run.py /path/to/config
+
+"""
+
+
 import argparse
 import os
 from multiprocessing import Pool
