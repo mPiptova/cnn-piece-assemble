@@ -1,0 +1,63 @@
+# Path to image directory. Images already needs to be preprocessed.
+img_path: "data/owl_101pcs"
+
+# Logging settings, optional.
+logging:
+  output_images_path: "./output/puzzle"
+  store_new_matches: True
+  store_old_matches: True
+  store_trusted_clusters: True
+
+# Defines the parameters of the piece representation
+piece:
+  # Polygon approximation precision
+  # Smaller values mean more precise approximation, but large number of points
+  polygon_approximation_tolerance: 3
+  # sigma for Gaussian blur used for color features extraction
+  sigma: 4
+  # Scale of the images. Smaller scale means faster but less precise computation.
+  scale: 0.5
+
+descriptor:
+  # Minimum length of a line segment, smaller segments will be deleted
+  min_segment_len: 0
+  # Number of points used for the spatial descriptor for each segment
+  n_points: 5
+  # Number of points used for the color descriptor for each segment
+  n_colors: 7
+  # Weights for distance computation
+  spatial_dist_w: 1
+  color_dist_w: 11
+  color_var_w: 0
+  length_w: 110
+  rel_len_diff_w: 5
+  angle_w: 0
+  # Tolerances for osculating circle approximation
+  tol_dists: [2, 3]
+
+cluster:
+  border_dist_tol: 4
+  self_intersection_tol: 0.02
+  rotation_tol: 0.17
+  translation_tol: 30
+
+cluster_scorer:
+  w_convexity: 2
+  w_complexity: 2
+  w_color_dist: 1000
+  w_dist: 50
+  w_border_length: 0.1
+
+trusted_cluster:
+  complexity_threshold: 4
+  color_threshold: 0.01
+  dist_threshold: 1.15
+
+clustering:
+  n_new_matches: 10
+  min_complexity: [2, 0.5]
+  n_iters: 20
+  icp_max_iters: 100
+  icp_min_change: 0.3
+  n_processes: 4
+  n_used_matches: 40000
