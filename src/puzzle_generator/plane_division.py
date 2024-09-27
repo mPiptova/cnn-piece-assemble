@@ -30,4 +30,8 @@ def divide_plane_by_curve(curve: np.ndarray, height: int, width: int) -> np.ndar
     background = np.where(img == 0)
     img = flood_fill(img, (background[0][0], background[1][0]), 1)
 
+    # In half the cases, choose the second partition
+    if np.random.rand() > 0.5:
+        img = 1 - img
+
     return img
