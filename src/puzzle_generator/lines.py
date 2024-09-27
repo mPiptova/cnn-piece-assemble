@@ -174,7 +174,7 @@ def interpolate_curve(points: np.ndarray, n: int) -> np.ndarray:
 
 
 def draw_curve(
-    curve: np.ndarray, width: int, height: int, thickness: int
+    curve: np.ndarray, height: int, width: int, thickness: int
 ) -> np.ndarray:
     """Return an image with a curve drawn on it.
 

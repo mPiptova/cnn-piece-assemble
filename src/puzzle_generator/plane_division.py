@@ -4,7 +4,7 @@ from skimage.segmentation import flood_fill
 from puzzle_generator.lines import draw_curve
 
 
-def divide_plane_by_curve(curve: np.ndarray, width: int, height: int) -> np.ndarray:
+def divide_plane_by_curve(curve: np.ndarray, height: int, width: int) -> np.ndarray:
     """Divide a plane by a curve.
 
     Parameters
@@ -25,7 +25,7 @@ def divide_plane_by_curve(curve: np.ndarray, width: int, height: int) -> np.ndar
     One component of the image has value 0 and the other part has value 1.
 
     """
-    img = draw_curve(curve, width, height, 3)
+    img = draw_curve(curve, height, width, 3)
 
     background = np.where(img == 0)
     img = flood_fill(img, (background[0][0], background[1][0]), 1)
