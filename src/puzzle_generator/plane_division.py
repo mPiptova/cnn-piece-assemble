@@ -2,6 +2,7 @@ import numpy as np
 from skimage.measure import label, regionprops
 from skimage.morphology import dilation, disk
 from skimage.segmentation import flood_fill
+from skimage.transform import rotate
 
 from puzzle_generator.lines import (
     draw_curve,
@@ -249,3 +250,34 @@ def get_puzzle_division(
     division = reduce_number_of_pieces(division, num_pieces, min_piece_area)
     division = _to_int_division_labels(division)
     return division
+
+
+def apply_division_to_image(img: np.ndarray, division: np.ndarray) -> list[np.ndarray]:
+    """Divide image into defined pieces."""
+
+    piece_props = regionprops(division)
+    piece_imgs = []
+
+    for piece_prop in piece_props:
+        bbox = piece_prop["bbox"]
+        piece_img = img[bbox[0] : bbox[2], bbox[1] : bbox[3]].copy()
+        mask = piece_prop["image"]
+        piece_img[~mask] = -1
+
+        # Apply random rotation
+        angle = np.random.uniform(0, 360)
+        piece_img = rotate(
+            piece_img, angle, resize=True, mode="constant", cval=-1, preserve_range=True
+        )
+
+        # Crop image so it doesn't contain the padding
+        foreground_idxs = np.where(piece_img != -1)
+        padding = (
+            *np.min(foreground_idxs, axis=1),
+            *np.max(foreground_idxs, axis=1) + 1,
+        )
+
+        piece_img = piece_img[padding[0] : padding[2], padding[1] : padding[3]]
+        piece_imgs.append(piece_img)
+
+    return piece_imgs
