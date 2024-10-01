@@ -15,7 +15,7 @@ from PIL import Image
 from PIL.Image import Image as PilImage
 from tqdm import tqdm
 
-from piece_assemble.image import np_to_pil
+from image import np_to_pil
 from piece_assemble.preprocessing import NegativePieceExtractor, PieceExtractorBase
 
 

@@ -4,6 +4,9 @@ from skimage.morphology import dilation, disk
 from skimage.segmentation import flood_fill
 from skimage.transform import rotate
 
+from geometry import Transformation
+from piece_assemble.descriptor import DummyDescriptorExtractor
+from piece_assemble.piece import Piece, TransformedPiece
 from puzzle_generator.lines import (
     draw_curve,
     generate_random_line,
@@ -34,7 +37,8 @@ def divide_plane_by_curve(curve: np.ndarray, height: int, width: int) -> np.ndar
     One component of the image has value 0 and the other part has value 1.
 
     """
-    img = draw_curve(curve, height, width, 3)
+    curve_width = max(min(height, width) // 100, 3)
+    img = draw_curve(curve, height, width, curve_width)
 
     background = np.where(img == 0)
     img = flood_fill(img, (background[0][0], background[1][0]), 1)
@@ -108,7 +112,7 @@ def get_random_division(
     width: int,
     num_curves: int,
     num_samples: int,
-    perturbation_strength: float,
+    perturbation_strength: float | None = None,
 ) -> np.ndarray:
     """Generate random division of the image with specified shape.
 
@@ -130,6 +134,9 @@ def get_random_division(
     Image divided into pieces. Each component (representing one piece) has different
     float value from 0 to 1.
     """
+    if perturbation_strength is None:
+        perturbation_strength = min(height, width) / 50
+
     img = np.ones((height, width), dtype=float)
     for _ in range(num_curves):
         img = add_division_level(img, num_samples, perturbation_strength)
@@ -218,7 +225,7 @@ def get_puzzle_division(
     min_piece_area: int,
     num_curves: int,
     num_samples: int,
-    perturbation_strength: float,
+    perturbation_strength: float | None = None,
 ) -> np.ndarray:
     """Generate puzzle division of the image with specified shape.
 
@@ -244,6 +251,9 @@ def get_puzzle_division(
     Image divided into pieces. Each component (representing one piece) has different
     integer value.
     """
+    if perturbation_strength is None:
+        perturbation_strength = min(height, width) / 50
+
     division = get_random_division(
         height, width, num_curves, num_samples, perturbation_strength
     )
@@ -252,32 +262,77 @@ def get_puzzle_division(
     return division
 
 
-def apply_division_to_image(img: np.ndarray, division: np.ndarray) -> list[np.ndarray]:
+def apply_division_to_image(
+    img: np.ndarray, division: np.ndarray
+) -> list[tuple[np.ndarray, Transformation]]:
     """Divide image into defined pieces."""
 
     piece_props = regionprops(division)
-    piece_imgs = []
+    pieces = []
 
-    for piece_prop in piece_props:
+    for i, piece_prop in enumerate(piece_props):
+        name = f"{i:03d}"
+
         bbox = piece_prop["bbox"]
         piece_img = img[bbox[0] : bbox[2], bbox[1] : bbox[3]].copy()
         mask = piece_prop["image"]
-        piece_img[~mask] = -1
+
+        original_center = np.array([piece_img.shape[0] / 2, piece_img.shape[1] / 2])
+
+        # Track what's happening to the image center
+        # Cropping is simple translation of the center
+        transformation = Transformation(
+            0,
+            -np.array([bbox[0], bbox[1]]),
+        )
 
         # Apply random rotation
         angle = np.random.uniform(0, 360)
         piece_img = rotate(
-            piece_img, angle, resize=True, mode="constant", cval=-1, preserve_range=True
+            piece_img, angle, resize=True, mode="constant", cval=1, preserve_range=True
+        )
+        mask = rotate(
+            mask, angle, resize=True, mode="constant", cval=0, preserve_range=True
+        )
+        new_center = np.array([piece_img.shape[0] / 2, piece_img.shape[1] / 2])
+
+        # Rotation: first, move the center to the origin
+        # then rotate and then move the center back
+        transformation = transformation.compose(
+            Transformation(
+                0,
+                -original_center,
+            )
+        )
+
+        transformation = transformation.compose(
+            Transformation(
+                -np.deg2rad(angle),
+                new_center,
+            )
         )
 
         # Crop image so it doesn't contain the padding
-        foreground_idxs = np.where(piece_img != -1)
+        foreground_idxs = np.where(mask)[:2]
         padding = (
             *np.min(foreground_idxs, axis=1),
             *np.max(foreground_idxs, axis=1) + 1,
         )
-
         piece_img = piece_img[padding[0] : padding[2], padding[1] : padding[3]]
-        piece_imgs.append(piece_img)
+        mask = mask[padding[0] : padding[2], padding[1] : padding[3]]
 
-    return piece_imgs
+        piece_img[~mask] = 1
+
+        # Again, cropping is just translation
+        transformation = transformation.compose(
+            Transformation(
+                0,
+                np.array([-padding[0], -padding[1]]),
+            )
+        )
+
+        piece = Piece(name, piece_img, mask, DummyDescriptorExtractor(), 0.1)
+        transformed_piece = TransformedPiece(piece, transformation.inverse())
+        pieces.append(transformed_piece)
+
+    return pieces

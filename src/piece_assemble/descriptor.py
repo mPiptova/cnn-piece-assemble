@@ -6,13 +6,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from more_itertools import flatten
 
+from geometry import extend_interval, extend_intervals, interval_difference, points_dist
 from piece_assemble.contours import get_osculating_circles, get_validity_intervals
-from piece_assemble.geometry import (
-    extend_interval,
-    extend_intervals,
-    interval_difference,
-    points_dist,
-)
 from piece_assemble.segment import ApproximatingArc, Segment
 from piece_assemble.types import NpImage, Point, Points
 
@@ -29,6 +24,16 @@ class DescriptorExtractor(ABC):
 
     def dist(self, first: np.ndarray, second: np.ndarray) -> np.ndarray:
         return NotImplemented
+
+
+class DummyDescriptorExtractor(DescriptorExtractor):
+    def extract(
+        self, contour: Points, image: NpImage
+    ) -> tuple[list[Segment], np.ndarray]:
+        return [], np.zeros((0, 0))
+
+    def dist(self, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+        return np.zeros((0, 0))
 
 
 class OsculatingCircleDescriptor(DescriptorExtractor):

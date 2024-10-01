@@ -10,9 +10,9 @@ import numpy as np
 from skimage.transform import rescale
 from tqdm import tqdm
 
+from image import np_to_pil
 from piece_assemble.cluster import Cluster, ClusterScorer
 from piece_assemble.descriptor import DescriptorExtractor
-from piece_assemble.image import np_to_pil
 from piece_assemble.matching import find_all_matches_with_preprocessing
 from piece_assemble.piece import Piece
 

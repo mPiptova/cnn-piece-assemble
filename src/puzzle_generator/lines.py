@@ -98,7 +98,7 @@ def sample_points_on_line(
     A numpy array of shape (num_samples, 2) containing the sampled points.
     """
     # Sample more points, so they are not uniformly distributed
-    num_generated_samples = num_samples * 2
+    num_generated_samples = int(num_samples * 1)
     x_values = np.linspace(p1[0], p2[0], num_generated_samples)
     y_values = np.linspace(p1[1], p2[1], num_generated_samples)
 
@@ -148,6 +148,7 @@ def perturbate_points(
 
     perturbed_points[:, 0] = np.clip(perturbed_points[:, 0], 0, height)
     perturbed_points[:, 1] = np.clip(perturbed_points[:, 1], 0, width)
+
     return perturbed_points
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from functools import cached_property
 from itertools import combinations
 
@@ -13,15 +14,26 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
-from piece_assemble.contours import smooth_contours
-from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
-from piece_assemble.piece import Piece
+from geometry import Transformation, get_common_contour_idxs, icp
+from piece_assemble.neighbors import NeighborClassifierBase, get_border_complexity
+from piece_assemble.piece import TransformedPiece
 from piece_assemble.types import Points
-from piece_assemble.utils import longest_continuous_subsequence
 from piece_assemble.visualization import draw_contour
 
 
-class ClusterScorer:
+class ClusterScorerBase(ABC):
+    @abstractmethod
+    def __call__(self, cluster: Cluster) -> float:
+
+        pass
+
+
+class DummyClusterScorer(ClusterScorerBase):
+    def __call__(self, cluster: Cluster) -> float:
+        return 0
+
+
+class ClusterScorer(ClusterScorerBase):
     def __init__(
         self,
         w_convexity: float,
@@ -75,15 +87,6 @@ class SelfIntersectionError(MergeError):
     """Exception raised when the intersection of the cluster is too high."""
 
 
-class TransformedPiece:
-    def __init__(self, piece: Piece, transformation: Transformation) -> None:
-        self.piece = piece
-        self.transformation = transformation
-
-    def transform(self, transformation: Transformation) -> TransformedPiece:
-        return TransformedPiece(self.piece, self.transformation.compose(transformation))
-
-
 class Cluster:
     def __init__(
         self,
@@ -93,6 +96,7 @@ class Cluster:
         border_dist_tol: float,
         rotation_tol: float,
         translation_tol: float,
+        neighbor_classifier: NeighborClassifierBase,
         parents: list[Cluster] = None,
     ) -> None:
         self.pieces = pieces
@@ -102,6 +106,7 @@ class Cluster:
         self.border_dist_tol = border_dist_tol
         self.rotation_tol = rotation_tol
         self.translation_tol = translation_tol
+        self.neighbor_classifier = neighbor_classifier
 
     @cached_property
     def score(self) -> float:
@@ -136,6 +141,7 @@ class Cluster:
             self.border_dist_tol,
             self.rotation_tol,
             self.translation_tol,
+            self.neighbor_classifier,
             self.parents,
         )
         new_cluster.border_length = self.border_length
@@ -152,6 +158,7 @@ class Cluster:
             self.border_dist_tol,
             self.rotation_tol,
             self.translation_tol,
+            self.neighbor_classifier,
             parents=[self],
         )
         new_cluster.border_length = self.border_length
@@ -253,6 +260,7 @@ class Cluster:
             self.border_dist_tol,
             self.rotation_tol,
             self.translation_tol,
+            self.neighbor_classifier,
             parents=None,
         )
 
@@ -350,6 +358,7 @@ class Cluster:
             self.border_dist_tol,
             self.rotation_tol,
             self.translation_tol,
+            self.neighbor_classifier,
             parents,
         )
 
@@ -385,6 +394,7 @@ class Cluster:
                     self.border_dist_tol,
                     self.rotation_tol,
                     self.translation_tol,
+                    self.neighbor_classifier,
                     parents=None,
                 )
 
@@ -461,6 +471,7 @@ class Cluster:
             self.border_dist_tol,
             self.rotation_tol,
             self.translation_tol,
+            self.neighbor_classifier,
             [self, other],
         )
 
@@ -516,6 +527,7 @@ class Cluster:
             self.border_dist_tol,
             self.rotation_tol,
             self.translation_tol,
+            self.neighbor_classifier,
             self.parents,
         )
 
@@ -585,52 +597,13 @@ class Cluster:
 
         return coords1, coords2
 
-    def _get_match_longest_continuous_border(
-        self, key1: str, key2: str
-    ) -> tuple[Piece, np.ndarray]:
-        idxs1, idxs2 = self.get_match_border_idxs(key1, key2)
-        if idxs2 is None:
-            return [], None
-
-        def get_longest_continuous_idxs(idxs: np.ndarray, piece: Piece):
-            idxs = np.concatenate((idxs, idxs + len(piece.contour)))
-            idxs = longest_continuous_subsequence(np.unique(idxs))
-            return idxs % len(piece.contour)
-
-        idxs1 = get_longest_continuous_idxs(idxs1, self.pieces[key1].piece)
-        idxs2 = get_longest_continuous_idxs(idxs2, self.pieces[key2].piece)
-
-        if len(idxs1) > len(idxs2):
-            return idxs1, self.pieces[key1].piece
-        return idxs2, self.pieces[key2].piece
-
-    def _get_curve_winding_angle(self, curve: Points) -> float:
-        curve = smooth_contours(curve, 3, False)
-        curve_diff = curve[:-1] - curve[1:]
-
-        if len(curve_diff) == 0:
-            return 0
-
-        curve_angle = np.arctan2(curve_diff[:, 0], curve_diff[:, 1])
-        curve_angle = np.unwrap(curve_angle, discont=np.pi)
-        return (curve_angle.max() - curve_angle.min()) / (2 * np.pi)
-
-    def get_match_complexity(self, key1: str, key2: str):
-        idxs, piece = self._get_match_longest_continuous_border(key1, key2)
-
-        if len(idxs) == 0:
-            return 0
-
-        segment_count = piece.get_segment_count(idxs)
-        winding_angle = self._get_curve_winding_angle(piece.contour[idxs])
-
-        return segment_count * winding_angle
-
     @cached_property
     def complexity(self):
         total_complexity = 0
         for key1, key2 in combinations(self.piece_ids, 2):
-            total_complexity += self.get_match_complexity(key1, key2)
+            total_complexity += get_border_complexity(
+                self.pieces[key1], self.pieces[key2]
+            )
 
         return total_complexity
 
@@ -671,11 +644,11 @@ class Cluster:
         piece_ids = list(self.piece_ids)
         matrix = np.full([len(self.pieces)] * 2, False)
         for i1, i2 in combinations(range(len(piece_ids)), 2):
-            complexity = self.get_match_complexity(piece_ids[i1], piece_ids[i2])
-            if complexity == 0:
-                continue
-            matrix[i1, i2] = True
-            matrix[i2, i1] = True
+            if self.neighbor_classifier(
+                self.pieces[piece_ids[i1]], self.pieces[piece_ids[i2]]
+            ):
+                matrix[i1, i2] = True
+                matrix[i2, i1] = True
 
         return matrix
 

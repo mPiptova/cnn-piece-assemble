@@ -5,9 +5,10 @@ from functools import cached_property
 
 from shapely import transform
 
-from piece_assemble.cluster import Cluster, ClusterScorer, TransformedPiece
-from piece_assemble.geometry import Transformation, fit_transform, icp
-from piece_assemble.piece import Piece
+from geometry import Transformation, fit_transform, icp
+from piece_assemble.cluster import Cluster, ClusterScorer
+from piece_assemble.neighbors import ComplexityNeighborClassifier
+from piece_assemble.piece import Piece, TransformedPiece
 
 
 class Match:
@@ -168,6 +169,11 @@ class CompactMatch:
             self.id1: TransformedPiece(piece1, self.transformation),
             self.id2: TransformedPiece(piece2, Transformation.identity()),
         }
+
+        cluster_config["neighbor_classifier"] = ComplexityNeighborClassifier(
+            cluster_config["border_dist_tol"]
+        )
+
         return Cluster(
             pieces,
             scorer=scorer,

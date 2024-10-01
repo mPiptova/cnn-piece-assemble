@@ -1,6 +1,6 @@
 import numpy as np
 
-from piece_assemble.geometry import extend_interval
+from geometry import extend_interval
 from piece_assemble.types import Interval, Point, Points
 
 

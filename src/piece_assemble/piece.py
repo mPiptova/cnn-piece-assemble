@@ -6,9 +6,9 @@ from skimage.filters import rank
 from skimage.measure import approximate_polygon
 from skimage.morphology import diamond, dilation, disk, erosion
 
+from geometry import Transformation, extend_interval
 from piece_assemble.contours import extract_contours, smooth_contours
 from piece_assemble.descriptor import DescriptorExtractor
-from piece_assemble.geometry import extend_interval
 from piece_assemble.segment import ApproximatingArc
 from piece_assemble.types import BinImg, NpImage
 
@@ -49,7 +49,7 @@ class Piece:
             self.img_avg = rank.mean(self.img, footprint, mask=mask_eroded)
 
         # Dilate mask to compensate for natural erosion of pieces
-        contours = extract_contours(dilation(self.mask, diamond(1)))
+        contours = extract_contours(dilation(self.mask, diamond(1)).astype("uint8"))
         outline_contour = contours[0]
         holes = contours[1]
 
@@ -179,3 +179,12 @@ class Piece:
         ]
 
         return len(arc_idxs)
+
+
+class TransformedPiece:
+    def __init__(self, piece: Piece, transformation: Transformation) -> None:
+        self.piece = piece
+        self.transformation = transformation
+
+    def transform(self, transformation: Transformation) -> TransformedPiece:
+        return TransformedPiece(self.piece, self.transformation.compose(transformation))

@@ -11,11 +11,11 @@ import argparse
 import os
 from multiprocessing import Pool
 
+from image import load_bin_img, load_img
 from piece_assemble.cluster import ClusterScorer
 from piece_assemble.clustering import Clustering
 from piece_assemble.config import load_config
 from piece_assemble.descriptor import MultiOsculatingCircleDescriptor
-from piece_assemble.image import load_bin_img, load_img
 from piece_assemble.piece import Piece
 from piece_assemble.types import BinImg, NpImage
 
