@@ -384,8 +384,8 @@ class Transformation:
         translation_tol: float = 21,
     ) -> bool:
         return (
-            abs(self.rotation_angle - other.rotation_angle) < angle_tol
-            and np.linalg.norm(self.translation - other.translation) < translation_tol
+            abs(self.rotation_angle - other.rotation_angle) <= angle_tol
+            and np.linalg.norm(self.translation - other.translation) <= translation_tol
         )
 
     def to_dict(self) -> dict:
