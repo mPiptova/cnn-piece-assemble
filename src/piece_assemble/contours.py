@@ -58,6 +58,9 @@ def smooth_contours(contours: Points, sigma: float, cyclic: bool = True) -> Poin
     smoothed_contours
         2d array of points
     """
+    if sigma == 0:
+        return contours
+
     mode = "wrap" if cyclic else "reflect"
     return np.stack(
         [
