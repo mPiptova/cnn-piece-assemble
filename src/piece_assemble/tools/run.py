@@ -47,6 +47,7 @@ def load_images(
         name.split(".")[0]
         for name in os.listdir(img_dir)
         if not name.endswith("_mask.png")
+        and name not in ["pieces.json", "original.jpg"]
     ]
     imgs = [load_img(os.path.join(img_dir, f"{name}.jpg"), scale) for name in img_ids]
     masks = [
