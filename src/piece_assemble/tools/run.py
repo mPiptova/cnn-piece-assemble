@@ -44,14 +44,15 @@ def load_images(
         A list of binary piece masks.
     """
     img_ids = [
-        name.split(".")[0]
+        name
         for name in os.listdir(img_dir)
         if not name.endswith("_mask.png")
-        and name not in ["pieces.json", "original.jpg"]
+        and name not in ["pieces.json", "original.png"]
     ]
-    imgs = [load_img(os.path.join(img_dir, f"{name}.jpg"), scale) for name in img_ids]
+
+    imgs = [load_img(os.path.join(img_dir, name), scale) for name in img_ids]
     masks = [
-        load_bin_img(os.path.join(img_dir, f"{name}_mask.png"), scale)
+        load_bin_img(os.path.join(img_dir, f"{name.split('.')[0]}_mask.png"), scale)
         for name in img_ids
     ]
     return img_ids, imgs, masks
