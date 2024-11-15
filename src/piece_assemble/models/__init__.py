@@ -1,4 +1,7 @@
+import json
+import os
 from functools import cached_property
+from typing import Literal
 
 import torch
 from torch import nn
@@ -257,3 +260,57 @@ class PairNetwork(nn.Module):
 
         matrix = x1_emb.transpose(1, 2) @ x2_emb
         return matrix
+
+
+def load_model_config(
+    model_id: str,
+    path: str,
+) -> dict:
+    """Load configuration of model with given ID.
+
+    Parameters
+    ----------
+    model_id
+        ID of the model.
+    path
+        Path to the directory containing the model.
+
+    Returns
+    -------
+    config
+
+    """
+    config_path = os.path.join(path, f"{model_id}_config.json")
+    config = json.load(open(config_path))
+    return config
+
+
+def load_model(
+    model_id: str, path: str, checkpoint_version: Literal["best", "latest"] = "best"
+) -> PairNetwork:
+    """Load model with given ID.
+
+    Parameters
+    ----------
+    model_id
+        ID of the model.
+    path
+        Path to the directory containing the model.
+    checkpoint_version
+        Version of the checkpoint to load. One of "best" or "latest".
+        "best" loads the checkpoint with best validation results, while "latest"
+        loads the last checkpoint.
+
+    Returns
+    -------
+    model
+
+    """
+    config = load_model_config(model_id, path)
+
+    checkpoint_path = os.path.join(path, f"{model_id}_{checkpoint_version}")
+
+    model = PairNetwork(**config["model"])
+    model.load_state_dict(torch.load(checkpoint_path, weights_only=False))
+
+    return model
