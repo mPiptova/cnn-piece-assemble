@@ -14,7 +14,9 @@ from piece_assemble.piece import Piece, TransformedPiece
 class Match:
     """Represents one match between two pieces."""
 
-    def __init__(self, piece1: Piece, piece2: Piece, idx1: int, idx2: int, dist: float):
+    def __init__(
+        self, piece1: Piece, piece2: Piece, idxs1: int, idxs2: int, dist: float
+    ):
         self.dist = dist
         self.id1 = piece1.name
         self.id2 = piece2.name
@@ -23,10 +25,9 @@ class Match:
 
         self.polygon1 = piece1.polygon
         self.polygon2 = piece2.polygon
-        self.match_points = (
-            piece1.segments[idx1].contour[[0, -1]],
-            piece2.segments[idx2].contour[[-1, 0]],
-        )
+
+        self.idxs1 = idxs1
+        self.idxs2 = idxs2
 
     @cached_property
     def initial_transformation(self) -> Transformation:
@@ -41,7 +42,7 @@ class Match:
         transformation
             Transformation which maps `piece1` to match `piece2`.
         """
-        return fit_transform(*self.match_points)
+        return fit_transform(self.contour1[self.idxs1], self.contour2[self.idxs2])
 
     def _ios(self, transformation: Transformation) -> float:
         """Computes intersection over smaller of matched pieces.
