@@ -4,7 +4,7 @@ import random
 import shutil
 import time
 from ast import Match
-from multiprocessing import Manager, Pool, Queue
+from multiprocessing import Manager, Pool
 
 import numpy as np
 from skimage.transform import rescale
@@ -15,6 +15,34 @@ from piece_assemble.cluster import Cluster, ClusterScorer
 from piece_assemble.descriptor import DescriptorExtractor
 from piece_assemble.matching import find_all_matches_with_preprocessing
 from piece_assemble.piece import Piece
+
+
+class Queue:
+    def __init__(self, parallel: bool = False):
+        self.parallel = parallel
+        if parallel:
+            self._queue = Manager().Queue()
+
+        else:
+            self._queue = []
+
+    def empty(self):
+        if self.parallel:
+            return self._queue.empty()
+        else:
+            return len(self._queue) == 0
+
+    def get(self):
+        if self.parallel:
+            return self._queue.get()
+        else:
+            return self._queue.pop(0)
+
+    def put(self, item):
+        if self.parallel:
+            self._queue.put(item)
+        else:
+            self._queue.append(item)
 
 
 class Clustering:
@@ -91,11 +119,45 @@ class Clustering:
         if self.all_matches is None:
             self.find_candidate_matches(n_used_matches)
 
+        # matches = self.all_matches.copy()
+
+        queue = Queue(parallel=n_processes > 1)
+
+        if n_processes > 1:
+            self._run_parallel(
+                n_iters,
+                trusted_cluster_config,
+                icp_max_iters,
+                icp_min_change,
+                n_new_matches,
+                n_processes,
+                min_complexity,
+                queue,
+            )
+        else:
+            self._run_serial(
+                n_iters,
+                trusted_cluster_config,
+                icp_max_iters,
+                icp_min_change,
+                n_new_matches,
+                min_complexity,
+                queue,
+            )
+        return self.best_cluster
+
+    def _run_parallel(
+        self,
+        n_iters: int,
+        trusted_cluster_config: dict,
+        icp_max_iters: int,
+        icp_min_change: float,
+        n_new_matches: int,
+        n_processes: int,
+        min_complexity: int,
+        queue: Queue,
+    ):
         matches = self.all_matches.copy()
-
-        manager = Manager()
-        queue = manager.Queue()
-
         with Pool(n_processes) as p:
             self._worker_count = n_processes
             for j in range(0, self._worker_count):
@@ -104,7 +166,7 @@ class Clustering:
                     args=(
                         matches[j :: self._worker_count],
                         queue,
-                        cluster_config,
+                        self.cluster_config,
                         icp_max_iters,
                         icp_min_change,
                     ),
@@ -122,7 +184,40 @@ class Clustering:
                     min_complexity,
                     queue,
                 )
-        return self.best_cluster
+
+    def _run_serial(
+        self,
+        n_iters: int,
+        trusted_cluster_config: dict,
+        icp_max_iters: int,
+        icp_min_change: float,
+        n_new_matches: int,
+        min_complexity: int,
+        queue: Queue,
+    ):
+        for match in tqdm(self.all_matches, desc="Generating matches"):
+            compact_match = match.verify(
+                self.cluster_config["border_dist_tol"],
+                icp_max_iters=icp_max_iters,
+                icp_min_change=icp_min_change,
+            )
+            if compact_match is not None:
+                queue.put(compact_match)
+
+        self._worker_count = 1
+        self._workers_finished = 0
+
+        for i in range(self._i, self._i + n_iters):
+            if self.assembled:
+                break
+            self._i = i + 1
+            self.run_iteration(
+                i,
+                trusted_cluster_config,
+                n_new_matches,
+                min_complexity,
+                queue,
+            )
 
     def run_iteration(
         self,
@@ -141,7 +236,7 @@ class Clustering:
         potential_trusted_clusters = []
         for all_found_pair_for_keys in self.all_pair_clusters.values():
             for pair_cluster in all_found_pair_for_keys:
-                if pair_cluster["count"] >= 6:
+                if pair_cluster["count"] >= 10:
                     potential_trusted_clusters.append(pair_cluster["cluster"])
 
         self.update_trusted_clusters(potential_trusted_clusters, lambda _: True)
@@ -197,17 +292,23 @@ class Clustering:
         new_pair_clusters = []
 
         with tqdm(desc="Generating new matches", total=n_new_matches) as pbar:
-            while (
-                len(new_pair_clusters) < n_new_matches
-                and self._workers_finished < self._worker_count
-            ):
-                if queue.empty():
-                    time.sleep(1)
-                    continue
+            while len(new_pair_clusters) < n_new_matches:
+                if self._workers_finished == self._worker_count:
+                    break
+
+                if self._worker_count == 1 and queue.empty():
+                    break
+
+                if self._worker_count > 1:
+                    if queue.empty():
+                        time.sleep(1)
+                        continue
 
                 new_match = queue.get()
+
                 if new_match is None:
                     self._workers_finished += 1
+                    print("Worker finished")
                     continue
 
                 new_cluster = new_match.to_cluster(
@@ -215,6 +316,7 @@ class Clustering:
                     self.cluster_config,
                     pieces_dict={piece.name: piece for piece in self.pieces},
                 )
+                # display(np_to_pil(new_cluster.draw()))
                 new_cluster = self.process_new_cluster(
                     new_cluster, trusted_cluster_config, min_complexity
                 )
