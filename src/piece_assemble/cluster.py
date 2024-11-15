@@ -602,7 +602,7 @@ class Cluster:
         total_complexity = 0
         for key1, key2 in combinations(self.piece_ids, 2):
             total_complexity += get_border_complexity(
-                self.pieces[key1], self.pieces[key2]
+                self.pieces[key1], self.pieces[key2], self.border_dist_tol
             )
 
         return total_complexity
