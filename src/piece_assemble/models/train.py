@@ -2,6 +2,10 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+from piece_assemble.models import PairNetwork
+from piece_assemble.models.eval import eval_puzzles
+from piece_assemble.piece import TransformedPiece
+
 
 class MaskedBCEWithLogitsLoss(torch.nn.BCEWithLogitsLoss):
     def __init__(
@@ -42,7 +46,7 @@ class MaskedBCEWithLogitsLoss(torch.nn.BCEWithLogitsLoss):
 
 
 def train_one_epoch(
-    model: torch.nn.Module,
+    model: PairNetwork,
     loss_fn: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     train_loader: torch.utils.data.DataLoader,
@@ -157,6 +161,7 @@ def train_model(
     epochs: int,
     tb_writer: torch.utils.tensorboard.SummaryWriter,
     start_epoch: int = 0,
+    puzzles: list[tuple[dict[str, TransformedPiece], list[list[str]]]] | None = None,
 ):
     epoch_number = start_epoch
     for epoch_number in range(epoch_number, epoch_number + epochs):
@@ -178,9 +183,22 @@ def train_model(
         tb_writer.add_scalar("Validation F1", eval_results["f1"], epoch_number)
         tb_writer.flush()
 
-        # # # Track best performance, and save the model's state
-        # if avg_vloss < best_vloss:
-        #     best_vloss = avg_vloss
+        if puzzles is not None:
+            metrics = eval_puzzles(model, puzzles, 7, 0.8)
+            tb_writer.add_scalar(
+                "Validation Piece-Level Precision", metrics["precision"], epoch_number
+            )
+            tb_writer.add_scalar(
+                "Validation Piece-Level Recall", metrics["recall"], epoch_number
+            )
+            tb_writer.add_scalar(
+                "Validation Piece-Level F1", metrics["f1"], epoch_number
+            )
+            tb_writer.add_scalar("Validation Missed", metrics["missed"], epoch_number)
+            tb_writer.add_scalar("Validation Wrong", metrics["wrong"], epoch_number)
+            tb_writer.add_scalar("Validation Extra", metrics["extra"], epoch_number)
+            tb_writer.flush()
+
         model_path = f"{model_id}_{epoch_number}"
         torch.save(model.state_dict(), model_path)
 

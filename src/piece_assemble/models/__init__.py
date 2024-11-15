@@ -56,7 +56,7 @@ class ConvBlock(nn.Module):
             in_channels = out_channels
 
             if i < block_size - 1 or not last_block:
-                if batch_normalization and i < block_size - 1:
+                if batch_normalization:
                     layers.append(torch.nn.BatchNorm1d(num_features=out_channels))
 
                 layers.append(nn.ReLU())
@@ -111,7 +111,16 @@ class EmbeddingUnet(nn.Module):
         self.down_blocks = []
         output_dim = embedding_dim
         for _ in range(depth):
-            self.down_blocks.append(ConvBlock(input_dim, output_dim, kernel_size))
+            self.down_blocks.append(
+                ConvBlock(
+                    input_dim,
+                    output_dim,
+                    kernel_size,
+                    block_size,
+                    batch_normalization=batch_normalization,
+                    dropout_rate=dropout_rate,
+                )
+            )
             input_dim = output_dim
             output_dim = output_dim * 2
 
@@ -181,9 +190,10 @@ class PairNetwork(nn.Module):
         self,
         embedding_dim: int,
         kernel_size: int,
-        levels: int = 3,
+        depth: int = 3,
         batch_normalization: bool = True,
         dropout_rate: float = 0,
+        shared_weights: bool = True,
     ):
         """
         Instantiates a U-Net embedding network.
@@ -194,7 +204,7 @@ class PairNetwork(nn.Module):
             Number of output channels.
         kernel_size
             Kernel size of the convolutional layers.
-        levels
+        depth
             Depth of the network.
         batch_normalization
             Whether batch normalization should be used.
@@ -203,14 +213,28 @@ class PairNetwork(nn.Module):
         """
         super().__init__()
 
-        self.embedding_network = EmbeddingUnet(
+        self.embedding_network1 = EmbeddingUnet(
             147,
             embedding_dim,
             kernel_size,
-            depth=levels,
+            depth=depth,
             batch_normalization=batch_normalization,
             dropout_rate=dropout_rate,
         )
+
+        if shared_weights:
+            self.embedding_network2 = self.embedding_network1
+        else:
+            self.embedding_network2 = EmbeddingUnet(
+                147,
+                embedding_dim,
+                kernel_size,
+                depth=depth,
+                batch_normalization=batch_normalization,
+                dropout_rate=dropout_rate,
+            )
+
+        self.shared_weights = shared_weights
 
     @cached_property
     def padding(self):
@@ -221,12 +245,15 @@ class PairNetwork(nn.Module):
         return int((dim - self.forward(x).shape[1]) / 2)
 
     def forward(self, x):
-        x1, x2 = x
-        x1_x2 = torch.cat([x1, x2], dim=0)
-        x1_x2_emb = self.embedding_network(x1_x2)
-        x1_emb = x1_x2_emb[: x1_x2_emb.shape[0] // 2]
-        x2_emb = x1_x2_emb[x1_x2_emb.shape[0] // 2 :]
+        if self.shared_weights:
+            x1_x2 = torch.cat([x[0], x[1]], dim=0)
+            x1_x2_emb = self.embedding_network1(x1_x2)
+            x1_emb = x1_x2_emb[: x1_x2_emb.shape[0] // 2]
+            x2_emb = x1_x2_emb[x1_x2_emb.shape[0] // 2 :]
+
+        else:
+            x1_emb = self.embedding_network1(x[0])
+            x2_emb = self.embedding_network2(x[1])
 
         matrix = x1_emb.transpose(1, 2) @ x2_emb
-
         return matrix

@@ -84,10 +84,8 @@ class PairsDataset(torch.utils.data.Dataset):
             ].item()
 
             with np.load(os.path.join(self.dataset_dir, data_file)) as data:
-                piece1_data = 1 - data[piece1] * 2
-                # piece1_data = np.zeros_like(piece1_data)
-                piece2_data = 1 - data[piece2] * 2
-                # piece2_data = np.zeros_like(piece2_data)
+                piece1_data = preprocess_piece_data(data[piece1])
+                piece2_data = preprocess_piece_data(data[piece2])
 
         else:
             matrix = None
@@ -107,9 +105,14 @@ class PairsDataset(torch.utils.data.Dataset):
         return piece1_data, piece2_data, matrix
 
 
+def preprocess_piece_data(data: np.ndarray) -> np.ndarray:
+    return 1 - data * 2
+
+
 class BatchCollator:
-    def __init__(self, padding: int):
+    def __init__(self, padding: int, len_divisor: int = 8):
         self.padding = padding
+        self.len_divisor = len_divisor
 
     def __call__(self, batch):
         pieces1, pieces2, matrices = zip(*batch)
@@ -130,10 +133,6 @@ class BatchCollator:
             tensor, (self.padding, self.padding), mode="circular"
         )
 
-        p = 8
-        if max_length % p != 0:
-            max_length = math.ceil(max_length / p) * p
-
         data_size = tensor.shape[1]
 
         if max_length is None:
@@ -147,9 +146,8 @@ class BatchCollator:
     def _get_max_piece_size(self, pieces):
         max_size = max([piece.shape[0] for piece in pieces])
         max_size = max_size + 2 * self.padding
-        p = 16
-        if max_size % p != 0:
-            max_size = math.ceil(max_size / p) * p
+        if max_size % self.len_divisor != 0:
+            max_size = math.ceil(max_size / self.len_divisor) * self.len_divisor
         return max_size
 
     def _prepare_batch_data(self, pieces1, pieces2, matrices):
