@@ -62,20 +62,9 @@ class Piece:
         self.contour = smooth_contours(outline_contour, sigma)
         self.holes = [smooth_contours(hole, sigma) for hole in holes if len(hole) > 100]
 
-        self.segments, self.descriptor = self.descriptor_extractor.extract(
-            self.contour, self.img_avg
-        )
+        self.descriptor = self.descriptor_extractor.extract(self.contour, self.img_avg)
 
         self._get_polygon_approximation(polygon_approximation_tolerance)
-
-        self.contour_segment_idxs = np.full(len(self.contour), -1)
-        for i, segment in enumerate(self.segments):
-            if segment.interval[0] < segment.interval[1]:
-                self.contour_segment_idxs[segment.interval[0] : segment.interval[1]] = i
-            else:
-                self.contour_segment_idxs[segment.interval[0] :] = i
-                self.contour_segment_idxs[: segment.interval[1]] = i
-
         self._extract_hole_descriptors()
 
     def _get_polygon_approximation(
@@ -113,19 +102,19 @@ class Piece:
                 else:
                     hole_segment_idxs[segment.interval[0] :] = i
                     hole_segment_idxs[: segment.interval[1]] = i
-            hole_segment_idxs += len(self.segments)
-            self.contour_segment_idxs = np.concatenate(
-                [self.contour_segment_idxs, hole_segment_idxs]
+            hole_segment_idxs += len(self.descriptor.segments)
+            self.descriptor.contour_segment_idxs = np.concatenate(
+                [self.descriptor.contour_segment_idxs, hole_segment_idxs]
             )
 
-            self.segments.extend(segments)
+            self.descriptor.segments.extend(segments)
 
     def get_segment_lengths(self) -> np.ndarray:
         def arc_len(arc: ApproximatingArc):
             extended_interval = extend_interval(arc.interval, len(self.contour))
             return extended_interval[1] - extended_interval[0]
 
-        return np.array([arc_len(arc) for arc in self.segments])
+        return np.array([arc_len(arc) for arc in self.descriptor.segments])
 
     def filter_small_arcs(self, min_size: float, min_angle: float) -> None:
         """Filter out circle arcs which are too small.
@@ -151,13 +140,13 @@ class Piece:
             length = len(arc)
             return length >= np.abs(arc.radius) * min_angle
 
-        new_arcs = [arc for arc in self.segments if is_large_enough(arc)]
-        if len(new_arcs) == len(self.segments):
+        new_arcs = [arc for arc in self.descriptor.segments if is_large_enough(arc)]
+        if len(new_arcs) == len(self.descriptor.segments):
             return
 
-        self.segments = new_arcs
+        self.descriptor.segments = new_arcs
         self.descriptor = np.array(
-            [self.segment_descriptor(arc.contour) for arc in self.segments]
+            [self.segment_descriptor(arc.contour) for arc in self.descriptor.segments]
         )
 
     def get_segment_count(self, idxs: np.ndarray) -> int:
@@ -175,13 +164,13 @@ class Piece:
             The total number of segments that the border section spans over.
         """
         unique_arc_idxs1 = np.unique(
-            self.contour_segment_idxs[idxs], return_counts=True
+            self.descriptor.contour_segment_idxs[idxs], return_counts=True
         )
 
         arc_idxs = [
             idx
             for idx, count in zip(*unique_arc_idxs1)
-            if idx != -1 and count > 0.7 * len(self.segments[idx])
+            if idx != -1 and count > 0.7 * len(self.descriptor.segments[idx])
         ]
 
         return len(arc_idxs)

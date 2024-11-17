@@ -16,14 +16,33 @@ if TYPE_CHECKING:
     from piece_assemble.types import NpImage, Point, Points
 
 
-class DescriptorExtractor(ABC):
+class Descriptor(ABC):
     @abstractmethod
-    def extract(
-        self, contour: Points, image: NpImage
-    ) -> tuple[list[Segment], np.ndarray]:
+    def to_array(self) -> np.ndarray:
         return NotImplemented
 
-    def dist(self, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+
+class SegmentDescriptor(Descriptor):
+    def __init__(
+        self,
+        segments: list[Segment],
+        features: np.ndarray,
+        contour_segment_idxs: np.ndarray,
+    ):
+        self.segments = segments
+        self.features = features
+        self.contour_segment_idxs = contour_segment_idxs
+
+    def to_array(self) -> np.ndarray:
+        return self.features
+
+
+class DescriptorExtractor(ABC):
+    @abstractmethod
+    def extract(self, contour: Points, image: NpImage) -> Descriptor:
+        return NotImplemented
+
+    def dist(self, first: Piece, second: Piece) -> np.ndarray:
         return NotImplemented
 
 
@@ -33,7 +52,7 @@ class DummyDescriptorExtractor(DescriptorExtractor):
     ) -> tuple[list[Segment], np.ndarray]:
         return [], np.zeros((0, 0))
 
-    def dist(self, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    def dist(self, first: Piece, second: Piece) -> np.ndarray:
         return np.zeros((0, 0))
 
 
@@ -65,9 +84,7 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         self.color_var_w = color_var_w
         self.spatial_dist_thr = 1000
 
-    def extract(
-        self, contour: Points, image: NpImage
-    ) -> tuple[list[Segment], np.ndarray]:
+    def extract(self, contour: Points, image: NpImage) -> Descriptor:
         radii, centers = get_osculating_circles(contour)
         segments = approximate_curve_by_circles(contour, radii, centers, self.tol_dist)
         segments = [
@@ -78,7 +95,15 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
             [self.segment_descriptor(segment, image) for segment in segments]
         )
 
-        return segments, descriptor
+        contour_segment_idxs = np.full(len(contour), -1)
+        for i, segment in enumerate(segments):
+            if segment.interval[0] < segment.interval[1]:
+                contour_segment_idxs[segment.interval[0] : segment.interval[1]] = i
+            else:
+                contour_segment_idxs[segment.interval[0] :] = i
+                contour_segment_idxs[: segment.interval[1]] = i
+
+        return SegmentDescriptor(segments, descriptor, contour_segment_idxs)
 
     def _get_points(self, segment: Segment, n_points: int) -> list[Point]:
         p_start = segment.contour[0]
@@ -181,11 +206,15 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         return dist
 
     def dist(self, piece1: Piece, piece2: Piece) -> np.ndarray:
-        color_dist = self.color_dist(piece1.descriptor, piece2.descriptor)
-        spatial_dist = self.spatial_dist(piece1.descriptor, piece2.descriptor)
+        color_dist = self.color_dist(
+            piece1.descriptor.features, piece2.descriptor.features
+        )
+        spatial_dist = self.spatial_dist(
+            piece1.descriptor.features, piece2.descriptor.features
+        )
         min_var = np.minimum(
-            self.color_var(piece1.descriptor)[:, np.newaxis],
-            self.color_var(piece2.descriptor)[np.newaxis, :],
+            self.color_var(piece1.descriptor.features)[:, np.newaxis],
+            self.color_var(piece2.descriptor.features)[np.newaxis, :],
         )
 
         len1 = piece1.get_segment_lengths()
@@ -194,8 +223,8 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         min_len = np.minimum(len1[:, np.newaxis], len2[np.newaxis, :])
         rel_len_diff = (max_len - min_len) / max_len
 
-        radii1 = np.array([segment.radius for segment in piece1.segments])
-        radii2 = np.array([segment.radius for segment in piece2.segments])
+        radii1 = np.array([segment.radius for segment in piece1.descriptor.segments])
+        radii2 = np.array([segment.radius for segment in piece2.descriptor.segments])
         angles1 = len1 / (2 * np.pi * radii1)
         angles2 = len2 / (2 * np.pi * radii2)
 
@@ -260,7 +289,15 @@ class MultiOsculatingCircleDescriptor(OsculatingCircleDescriptor):
             [self.segment_descriptor(segment, image) for segment in segments]
         )
 
-        return segments, descriptor
+        contour_segment_idxs = np.full(len(contour), -1)
+        for i, segment in enumerate(segments):
+            if segment.interval[0] < segment.interval[1]:
+                contour_segment_idxs[segment.interval[0] : segment.interval[1]] = i
+            else:
+                contour_segment_idxs[segment.interval[0] :] = i
+                contour_segment_idxs[: segment.interval[1]] = i
+
+        return SegmentDescriptor(segments, descriptor, contour_segment_idxs)
 
 
 def approximate_curve_by_circles(

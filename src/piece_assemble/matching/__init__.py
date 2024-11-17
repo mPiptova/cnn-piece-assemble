@@ -30,8 +30,8 @@ def find_matches(
             dist=desc_dist[i, j],
             piece1=piece1,
             piece2=piece2,
-            idxs1=np.array(piece1.segments[i].interval),
-            idxs2=np.array(piece2.segments[j].interval)[::-1],
+            idxs1=np.array(piece1.descriptor.segments[i].interval),
+            idxs2=np.array(piece2.descriptor.segments[j].interval)[::-1],
         )
         for i, j in zip(idxs1, idxs2)
         if not np.isinf(desc_dist[i, j])
