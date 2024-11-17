@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from shapely import geometry
 from skimage.filters import rank
@@ -8,9 +10,11 @@ from skimage.morphology import diamond, dilation, disk, erosion
 
 from geometry import Transformation, extend_interval
 from piece_assemble.contours import extract_contours, smooth_contours
-from piece_assemble.descriptor import DescriptorExtractor
-from piece_assemble.segment import ApproximatingArc
-from piece_assemble.types import BinImg, NpImage
+
+if TYPE_CHECKING:
+    from piece_assemble.descriptor import DescriptorExtractor
+    from piece_assemble.segment import ApproximatingArc
+    from piece_assemble.types import BinImg, NpImage
 
 
 class Piece:

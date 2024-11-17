@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 from shapely import transform
 
 from geometry import Transformation, fit_transform, icp
-from piece_assemble.cluster import Cluster, ClusterScorer
+from piece_assemble.cluster import Cluster
 from piece_assemble.neighbors import ComplexityNeighborClassifier
-from piece_assemble.piece import Piece, TransformedPiece
+from piece_assemble.piece import TransformedPiece
+
+if TYPE_CHECKING:
+    from piece_assemble.cluster import ClusterScorer
+    from piece_assemble.piece import Piece
 
 
 class Match:

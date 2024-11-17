@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from geometry import get_common_contour_idxs
 from piece_assemble.contours import smooth_contours
-from piece_assemble.piece import Piece, TransformedPiece
-from piece_assemble.types import Points
 from piece_assemble.utils import longest_continuous_subsequence
+
+if TYPE_CHECKING:
+    from piece_assemble.piece import Piece, TransformedPiece
+    from piece_assemble.types import Points
 
 
 class NeighborClassifierBase(ABC):

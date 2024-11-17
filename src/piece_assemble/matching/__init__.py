@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from itertools import combinations
 from multiprocessing import Pool
+from typing import TYPE_CHECKING
 
 import numpy as np
 from more_itertools import flatten
 from tqdm import tqdm
 
-from piece_assemble.descriptor import DescriptorExtractor
 from piece_assemble.matching.match import Match
-from piece_assemble.piece import Piece
+
+if TYPE_CHECKING:
+    from piece_assemble.descriptor import DescriptorExtractor
+    from piece_assemble.piece import Piece
 
 
 def find_matches(

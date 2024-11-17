@@ -1,10 +1,16 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 from skimage.morphology import dilation
 
 from geometry import get_common_contour_idxs
-from piece_assemble.piece import TransformedPiece
 from piece_assemble.types import Points
 from piece_assemble.visualization import draw_contour
+
+if TYPE_CHECKING:
+    from piece_assemble.piece import TransformedPiece
 
 
 def get_correspondence_matrix(

@@ -1,10 +1,17 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 from PIL import ImageDraw
-from PIL.Image import Image as PilImage
 
 from image import np_to_pil
-from piece_assemble.piece import ApproximatingArc
-from piece_assemble.types import NpImage, Point, Points
+
+if TYPE_CHECKING:
+    from PIL.Image import Image as PilImage
+
+    from piece_assemble.segment import ApproximatingArc
+    from piece_assemble.types import NpImage, Point, Points
 
 
 def draw_contour(

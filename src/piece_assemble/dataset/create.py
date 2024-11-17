@@ -6,6 +6,12 @@ Example usage:
 python src/piece_assemble/dataset/create.py \
     --window-size 7 output/dir puzzle/dir1 puzzle/dir2
 """
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from piece_assemble.piece import Piece
 
 import argparse
 import json

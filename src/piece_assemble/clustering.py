@@ -1,20 +1,26 @@
+from __future__ import annotations
+
 import math
 import os
 import random
 import shutil
 import time
-from ast import Match
 from multiprocessing import Manager, Pool
+from typing import TYPE_CHECKING
 
 import numpy as np
 from skimage.transform import rescale
 from tqdm import tqdm
 
 from image import np_to_pil
-from piece_assemble.cluster import Cluster, ClusterScorer
-from piece_assemble.descriptor import DescriptorExtractor
+from piece_assemble.cluster import Cluster
 from piece_assemble.matching import find_all_matches_with_preprocessing
-from piece_assemble.piece import Piece
+
+if TYPE_CHECKING:
+    from piece_assemble.cluster import ClusterScorer
+    from piece_assemble.descriptor import DescriptorExtractor
+    from piece_assemble.matching import Match
+    from piece_assemble.piece import Piece
 
 
 class Queue:

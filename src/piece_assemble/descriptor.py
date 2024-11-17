@@ -8,11 +8,12 @@ from more_itertools import flatten
 
 from geometry import extend_interval, extend_intervals, interval_difference, points_dist
 from piece_assemble.contours import get_osculating_circles, get_validity_intervals
-from piece_assemble.segment import ApproximatingArc, Segment
-from piece_assemble.types import NpImage, Point, Points
+from piece_assemble.segment import ApproximatingArc
 
 if TYPE_CHECKING:
     from piece_assemble.piece import Piece
+    from piece_assemble.segment import Segment
+    from piece_assemble.types import NpImage, Point, Points
 
 
 class DescriptorExtractor(ABC):
