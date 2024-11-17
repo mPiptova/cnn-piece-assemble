@@ -22,32 +22,8 @@ import numpy as np
 from tqdm import tqdm
 
 from geometry import Transformation
-from piece_assemble.descriptor import DummyDescriptorExtractor
 from piece_assemble.models.data import get_correspondence_matrix, img_to_patches
-from piece_assemble.piece import Piece, TransformedPiece
-from piece_assemble.tools.run import load_images
-
-
-def load_pieces(path: str) -> dict[Piece]:
-    """
-    Load pieces from the given directory.
-
-    Parameters
-    ----------
-    path
-        Path to the directory containing piece images.
-
-    Returns
-    -------
-    pieces
-        A dictionary of Piece objects.
-    """
-    img_ids, imgs, masks = load_images(path)
-
-    return {
-        img_ids[i]: Piece(img_ids[i], imgs[i], masks[i], DummyDescriptorExtractor(), 0)
-        for i in range(len(img_ids))
-    }
+from piece_assemble.piece import TransformedPiece, load_pieces
 
 
 def load_puzzle(path: str) -> tuple[dict[TransformedPiece], list[list[str]]]:
