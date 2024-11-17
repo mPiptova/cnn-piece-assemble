@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from piece_assemble.piece import Piece
+    from piece_assemble.types import Points
 
 import argparse
 import json
@@ -169,7 +170,7 @@ def create_dataset(
         store_data(pieces, window_size, target_dir, data_index_path, i)
 
 
-def get_img_patches(piece: Piece, window_size: int) -> np.ndarray:
+def get_img_patches_from_piece(piece: Piece, window_size: int) -> np.ndarray:
     """
     Extract image patches from the given piece.
 
@@ -185,7 +186,11 @@ def get_img_patches(piece: Piece, window_size: int) -> np.ndarray:
     patches
         An array of image patches.
     """
-    patches = img_to_patches(piece.contour, piece.img, window_size)
+    return get_img_patches(piece.contour, piece.img, window_size)
+
+
+def get_img_patches(contour: Points, img: np.ndarray, window_size: int) -> np.ndarray:
+    patches = img_to_patches(contour, img, window_size)
     patches = np.array(patches)
     return patches.reshape((patches.shape[0], -1))
 
@@ -224,7 +229,7 @@ def store_data(
     np.savez_compressed(
         piece_data_path,
         **{
-            piece.piece.name: get_img_patches(piece.piece, window_size)
+            piece.piece.name: get_img_patches_from_piece(piece.piece, window_size)
             for piece in pieces.values()
         },
     )
