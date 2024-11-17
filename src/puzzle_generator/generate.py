@@ -166,10 +166,13 @@ if __name__ == "__main__":
             img_pil = img_pil.resize(new_shape)
 
         output_dir = os.path.join(
-            args.output_dir, os.path.basename(img_path).split(".")[0]
+            args.output_dir, f"{args.num_pieces}_{os.path.basename(img_path)[:-4]}"
         )
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        if os.path.exists(output_dir):
+            print(f"Skipping {output_dir}, already exists")
+            continue
+
+        os.makedirs(output_dir)
 
         img = pil_to_np(img_pil)
         generate_puzzle(
