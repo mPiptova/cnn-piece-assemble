@@ -17,18 +17,16 @@ def get_correspondence_matrix(
     t_piece1: TransformedPiece, t_piece2: TransformedPiece, tol: int = 5
 ) -> np.ndarray:
     idxs1_closest, idxs2 = get_common_contour_idxs(
-        t_piece1.transformation.apply(t_piece1.piece.contour),
-        t_piece2.transformation.apply(t_piece2.piece.contour),
+        t_piece1.contour,
+        t_piece2.contour,
         tol,
     )
     idxs2_closest, idxs1 = get_common_contour_idxs(
-        t_piece2.transformation.apply(t_piece2.piece.contour),
-        t_piece1.transformation.apply(t_piece1.piece.contour),
+        t_piece2.contour,
+        t_piece1.contour,
         tol,
     )
-    similarity_matrix = np.zeros(
-        (len(t_piece1.piece.contour), len(t_piece2.piece.contour))
-    )
+    similarity_matrix = np.zeros((len(t_piece1.contour), len(t_piece2.contour)))
 
     similarity_matrix[idxs1_closest, idxs2] = 1
     similarity_matrix[idxs1, idxs2_closest] = 1

@@ -134,8 +134,8 @@ def longest_continuous_border(
     The indices of the longest border and the corresponding piece.
     """
     idxs1, idxs2 = get_common_contour_idxs(
-        piece1.transformation.apply(piece1.piece.contour),
-        piece2.transformation.apply(piece2.piece.contour),
+        piece1.contour,
+        piece2.contour,
         border_dist_tol,
     )
     if idxs2 is None:
@@ -146,9 +146,9 @@ def longest_continuous_border(
         idxs = longest_continuous_subsequence(np.unique(idxs))
         return idxs % len(piece.contour)
 
-    idxs1 = get_longest_continuous_idxs(idxs1, piece1.piece)
-    idxs2 = get_longest_continuous_idxs(idxs2, piece2.piece)
+    idxs1 = get_longest_continuous_idxs(idxs1, piece1)
+    idxs2 = get_longest_continuous_idxs(idxs2, piece2)
 
     if len(idxs1) > len(idxs2):
-        return idxs1, piece1.piece
-    return idxs2, piece2.piece
+        return idxs1, piece1
+    return idxs2, piece2

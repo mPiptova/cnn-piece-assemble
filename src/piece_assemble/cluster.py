@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import cv2 as cv
 import numpy as np
-import shapely
 from more_itertools import flatten
 from rustworkx import PyGraph, connected_components
 from scipy.ndimage import gaussian_filter1d
@@ -196,12 +195,7 @@ class Cluster:
 
     @property
     def transformed_polygons(self) -> list[Polygon]:
-        return [
-            shapely.transform(
-                piece.piece.polygon, lambda pol: piece.transformation.apply(pol)
-            )
-            for piece in self.pieces.values()
-        ]
+        return [piece.polygon for piece in self.pieces.values()]
 
     def intersection(self, polygon: Polygon) -> float:
         polygons = self.transformed_polygons
@@ -239,14 +233,8 @@ class Cluster:
         )
 
         for key1, key2 in combinations(self.pieces.keys(), 2):
-            p1 = shapely.transform(
-                self.pieces[key1].piece.polygon,
-                lambda pol: self.pieces[key1].transformation.apply(pol),
-            )
-            p2 = shapely.transform(
-                self.pieces[key2].piece.polygon,
-                lambda pol: self.pieces[key2].transformation.apply(pol),
-            )
+            p1 = self.pieces[key1].polygon
+            p2 = self.pieces[key2].polygon
             if p1.intersection(p2).area / min(p1.area, p2.area) > self_intersection_tol:
                 if key1 not in pieces_to_keep:
                     new_pieces.pop(key1, None)
@@ -290,9 +278,7 @@ class Cluster:
         if len(common_keys) == 0:
             return None, None
 
-        common_keys.sort(
-            key=lambda key: self.pieces[key].piece.polygon.area, reverse=True
-        )
+        common_keys.sort(key=lambda key: self.pieces[key].polygon.area, reverse=True)
         common_key = common_keys.pop()
 
         return (
@@ -497,10 +483,7 @@ class Cluster:
         -------
         New finetuned cluster.
         """
-        contour_dict = {
-            key: piece.transformation.apply(piece.piece.contour)
-            for key, piece in self.pieces.items()
-        }
+        contour_dict = {key: piece.contour for key, piece in self.pieces.items()}
 
         new_pieces = self.pieces.copy()
         for _ in range(num_iters):
@@ -563,13 +546,12 @@ class Cluster:
             key1, key2 = min(key1, key2), max(key1, key2)
             if (key1, key2) in matches_border_dict.keys():
                 continue
-            piece1 = self.pieces[key1].piece
-            piece2 = self.pieces[key2].piece
-            transformation1 = self.pieces[key1].transformation
-            transformation2 = self.pieces[key2].transformation
+            piece1 = self.pieces[key1]
+            piece2 = self.pieces[key2]
+
             idxs1, idxs2 = get_common_contour_idxs(
-                transformation1.apply(piece1.contour),
-                transformation2.apply(piece2.contour),
+                piece1.contour,
+                piece2.contour,
                 self.border_dist_tol,
             )
 
@@ -594,11 +576,8 @@ class Cluster:
         if idxs1 is None:
             return None, None
 
-        piece1 = self.pieces[key1].piece
-        piece2 = self.pieces[key2].piece
-
-        coords1 = self.pieces[key1].transformation.apply(piece1.contour[idxs1])
-        coords2 = self.pieces[key2].transformation.apply(piece2.contour[idxs2])
+        coords1 = self.pieces[key1].contour[idxs1]
+        coords2 = self.pieces[key2].contour[idxs2]
 
         return coords1, coords2
 
@@ -613,15 +592,15 @@ class Cluster:
         return total_complexity
 
     def get_match_color_dist(self, key1: str, key2: str):
-        piece1 = self.pieces[key1].piece
-        piece2 = self.pieces[key2].piece
+        piece1 = self.pieces[key1]
+        piece2 = self.pieces[key2]
 
         border_idxs1, border_idxs2 = self.get_match_border_idxs(key1, key2)
         if border_idxs1 is None:
             return -1
 
-        border1 = piece1.contour[border_idxs1].round().astype(int)
-        border2 = piece2.contour[border_idxs2].round().astype(int)
+        border1 = piece1.original_contour[border_idxs1].round().astype(int)
+        border2 = piece2.original_contour[border_idxs2].round().astype(int)
 
         values1 = piece1.img_avg[border1[:, 0], border1[:, 1]]
         values2 = piece2.img_avg[border2[:, 0], border2[:, 1]]
@@ -668,7 +647,6 @@ class Cluster:
         center_positions = []
         for piece in self.pieces.values():
             transformation = piece.transformation
-            piece = piece.piece
             deg_angle = np.rad2deg(transformation.rotation_angle)
             rot_img = rotate(
                 np.where(piece.mask[:, :, np.newaxis], piece.img, -1),
@@ -690,7 +668,9 @@ class Cluster:
 
             piece_imgs.append(rot_img)
 
-            center_orig = (piece.contour.max(axis=0) + piece.contour.min(axis=0)) / 2
+            center_orig = (
+                piece.original_contour.max(axis=0) + piece.original_contour.min(axis=0)
+            ) / 2
             center_target = transformation.apply(center_orig)
             center_positions.append(center_target.round().astype(int))
 
@@ -719,10 +699,7 @@ class Cluster:
             ] = np.where(piece_img < 0, img_crop, piece_img)
 
         if draw_contours:
-            contours = [
-                piece.transformation.apply(piece.piece.contour)
-                for piece in self.pieces.values()
-            ]
+            contours = [piece.contour for piece in self.pieces.values()]
             contours = (np.concatenate(contours) - offset).round().astype(int)
             contours = contours[(contours[:, 0] < size[0]) & (contours[:, 1] < size[1])]
             img_contour = np.ones((size[0], size[1]))

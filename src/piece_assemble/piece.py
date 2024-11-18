@@ -4,7 +4,8 @@ import os
 from typing import TYPE_CHECKING
 
 import numpy as np
-from shapely import geometry
+import shapely
+from shapely import Polygon, geometry
 from skimage.filters import rank
 from skimage.measure import approximate_polygon
 from skimage.morphology import diamond, dilation, disk, erosion
@@ -12,9 +13,14 @@ from skimage.morphology import diamond, dilation, disk, erosion
 from geometry import Transformation, extend_interval
 from image import load_bin_img, load_img
 from piece_assemble.contours import extract_contours, smooth_contours
+from piece_assemble.types import Points
 
 if TYPE_CHECKING:
-    from piece_assemble.descriptor import DescriptorExtractor, DummyDescriptorExtractor
+    from piece_assemble.descriptor import (
+        Descriptor,
+        DescriptorExtractor,
+        DummyDescriptorExtractor,
+    )
     from piece_assemble.segment import ApproximatingArc
     from piece_assemble.types import BinImg, NpImage
 
@@ -24,24 +30,68 @@ class Piece:
         self,
         name: str,
         img: NpImage,
+        img_avg: NpImage,
+        mask: BinImg,
+        contour: Points,
+        descriptor_extractor: DescriptorExtractor,
+        descriptor: Descriptor,
+        holes: list[Points],
+        hole_descriptors: list[Descriptor],
+        polygon: Polygon,
+    ):
+        self.name = name
+        self.img = img
+        self.img_avg = img_avg
+        self.mask = mask
+        self.contour = contour
+        self.descriptor_extractor = descriptor_extractor
+        self.descriptor = descriptor
+        self.holes = holes
+        self.polygon = polygon
+        self.hole_descriptors = hole_descriptors
+
+    @classmethod
+    def from_image(
+        cls,
+        name: str,
+        img: NpImage,
         mask: BinImg,
         descriptor_extractor: DescriptorExtractor,
         sigma: float = 5,
         polygon_approximation_tolerance: float = 3,
         img_mean_window_r: int = 3,
-    ) -> None:
+    ) -> Piece:
+        """Create a piece representation from an image and mask.
 
-        self.name = name
-        self.img = img
-        self.mask = mask
-        self.descriptor_extractor = descriptor_extractor
+        Parameters
+        ----------
+        name
+            The ID of the piece.
+        img
+            The image of the piece.
+        mask
+            The binary mask of the piece.
+        descriptor_extractor
+            The descriptor extractor used to extract the descriptor of the piece.
+        sigma
+            The standard deviation of the Gaussian kernel used for smoothing the
+            contours.
+        polygon_approximation_tolerance
+            The tolerance for the polygon approximation algorithm.
+        img_mean_window_r
+            The radius of the circular window used for computing the average image.
+
+        Returns
+        -------
+        A Piece object.
+        """
 
         # For averaging, use eroded mask for better behavior near contours
-        mask_eroded = erosion(self.mask.astype(bool), diamond(1))
+        mask_eroded = erosion(mask.astype(bool), diamond(1))
         footprint = disk(img_mean_window_r)
-        img_int = (self.img * 255).astype("uint8")
-        if len(self.img.shape) == 3:
-            self.img_avg = (
+        img_int = (img * 255).astype("uint8")
+        if len(img.shape) == 3:
+            img_avg = (
                 np.stack(
                     [
                         rank.mean(img_int[:, :, channel], footprint, mask=mask_eroded)
@@ -52,62 +102,65 @@ class Piece:
                 / 255
             )
         else:
-            self.img_avg = rank.mean(self.img, footprint, mask=mask_eroded)
+            img_avg = rank.mean(img, footprint, mask=mask_eroded)
 
         # Dilate mask to compensate for natural erosion of pieces
-        contours = extract_contours(dilation(self.mask, diamond(1)).astype("uint8"))
+        contours = extract_contours(dilation(mask, diamond(1)).astype("uint8"))
         outline_contour = contours[0]
         holes = contours[1]
 
-        self.contour = smooth_contours(outline_contour, sigma)
-        self.holes = [smooth_contours(hole, sigma) for hole in holes if len(hole) > 100]
+        contour = smooth_contours(outline_contour, sigma)
+        holes = [smooth_contours(hole, sigma) for hole in holes if len(hole) > 100]
 
-        self.descriptor = self.descriptor_extractor.extract(self.contour, self.img_avg)
+        descriptor = descriptor_extractor.extract(contour, img_avg)
 
-        self._get_polygon_approximation(polygon_approximation_tolerance)
-        self._extract_hole_descriptors()
+        polygon = cls._get_polygon_approximation(
+            polygon_approximation_tolerance, contour, holes
+        )
+        hole_descriptors = cls._extract_hole_descriptors(holes, img_avg)
 
+        return cls(
+            name,
+            img,
+            img_avg,
+            mask,
+            contour,
+            descriptor_extractor,
+            descriptor,
+            holes,
+            hole_descriptors,
+            polygon,
+        )
+
+    @classmethod
     def _get_polygon_approximation(
-        self, polygon_approximation_tolerance: float
+        cls,
+        polygon_approximation_tolerance: float,
+        contour: Points,
+        holes: list[Points],
     ) -> None:
-        self.polygon = geometry.Polygon(
-            approximate_polygon(self.contour, polygon_approximation_tolerance)
+        polygon = geometry.Polygon(
+            approximate_polygon(contour, polygon_approximation_tolerance)
         )
         hole_polygons = [
             geometry.Polygon(approximate_polygon(hole, polygon_approximation_tolerance))
-            for hole in self.holes
+            for hole in holes
         ]
 
         for hole_polygon in hole_polygons:
-            self.polygon = self.polygon.difference(hole_polygon)
+            polygon = polygon.difference(hole_polygon)
 
-    def _extract_hole_descriptors(self) -> None:
-        hole_segments = []
+        return polygon
+
+    @classmethod
+    def _extract_hole_descriptors(cls, holes: list[Points], img_avg: NpImage) -> None:
         hole_descriptors = []
 
-        for hole in self.holes:
-            segments, descriptor = self.descriptor_extractor.extract(hole, self.img_avg)
-            hole_segments.append(segments)
+        for hole in holes:
+            descriptor = cls.descriptor_extractor.extract(hole, img_avg)
             hole_descriptors.append(descriptor)
-            for segment in segments:
-                segment.offset = len(self.contour)
 
-            self.descriptor = np.concatenate([self.descriptor, descriptor])
-            self.contour = np.concatenate([self.contour, hole])
-
-            hole_segment_idxs = np.full(len(hole), -1)
-            for i, segment in enumerate(segments):
-                if segment.interval[0] < segment.interval[1]:
-                    hole_segment_idxs[segment.interval[0] : segment.interval[1]] = i
-                else:
-                    hole_segment_idxs[segment.interval[0] :] = i
-                    hole_segment_idxs[: segment.interval[1]] = i
-            hole_segment_idxs += len(self.descriptor.segments)
-            self.descriptor.contour_segment_idxs = np.concatenate(
-                [self.descriptor.contour_segment_idxs, hole_segment_idxs]
-            )
-
-            self.descriptor.segments.extend(segments)
+        return
 
     def get_segment_lengths(self) -> np.ndarray:
         def arc_len(arc: ApproximatingArc):
@@ -176,13 +229,34 @@ class Piece:
         return len(arc_idxs)
 
 
-class TransformedPiece:
+class TransformedPiece(Piece):
     def __init__(self, piece: Piece, transformation: Transformation) -> None:
-        self.piece = piece
+        super().__init__(
+            piece.name,
+            piece.img,
+            piece.img_avg,
+            piece.mask,
+            piece.contour,
+            piece.descriptor_extractor,
+            piece.descriptor,
+            piece.holes,
+            piece.hole_descriptors,
+            piece.polygon,
+        )
+        self._piece = piece
+
+        self.polygon = shapely.transform(piece.polygon, transformation.apply)
+        self.contour = transformation.apply(piece.contour)
         self.transformation = transformation
 
+    @property
+    def original_contour(self) -> Points:
+        return self._piece.contour
+
     def transform(self, transformation: Transformation) -> TransformedPiece:
-        return TransformedPiece(self.piece, self.transformation.compose(transformation))
+        return TransformedPiece(
+            self._piece, self.transformation.compose(transformation)
+        )
 
 
 def load_images(
@@ -246,6 +320,6 @@ def load_pieces(
     img_ids, imgs, masks = load_images(path)
 
     return {
-        img_ids[i]: Piece(img_ids[i], imgs[i], masks[i], descriptor, 0)
+        img_ids[i]: Piece.from_image(img_ids[i], imgs[i], masks[i], descriptor, 0)
         for i in range(len(img_ids))
     }
