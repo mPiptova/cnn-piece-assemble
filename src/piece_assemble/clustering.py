@@ -14,7 +14,6 @@ from tqdm import tqdm
 
 from image import np_to_pil
 from piece_assemble.cluster import Cluster
-from piece_assemble.matching import find_all_matches_with_preprocessing
 
 if TYPE_CHECKING:
     from piece_assemble.cluster import ClusterScorer
@@ -104,9 +103,9 @@ class Clustering:
             pass
 
     def find_candidate_matches(self, n_matches: int = 40000) -> None:
-        self.all_matches = find_all_matches_with_preprocessing(
-            self.pieces, self.descriptor_extractor
-        )[:n_matches]
+        self.all_matches = self.descriptor_extractor.find_all_matches(self.pieces)[
+            :n_matches
+        ]
 
     def __call__(
         self,

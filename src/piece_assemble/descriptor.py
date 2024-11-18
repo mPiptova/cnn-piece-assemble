@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from itertools import combinations
+from multiprocessing import Pool
 from typing import TYPE_CHECKING
 
 import numpy as np
 from more_itertools import flatten
+from tqdm import tqdm
 
 from geometry import extend_interval, extend_intervals, interval_difference, points_dist
 from piece_assemble.contours import get_osculating_circles, get_validity_intervals
+from piece_assemble.matching.match import Match
 from piece_assemble.segment import ApproximatingArc
 
 if TYPE_CHECKING:
@@ -43,6 +47,12 @@ class DescriptorExtractor(ABC):
         return NotImplemented
 
     def dist(self, first: Piece, second: Piece) -> np.ndarray:
+        return NotImplemented
+
+    def find_all_matches(
+        self,
+        pieces: list[Piece],
+    ) -> list[Match]:
         return NotImplemented
 
 
@@ -239,6 +249,59 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
             + rel_len_diff * self.rel_len_diff_w
             + self.angle_w / (min_angles + eps)
         )
+
+    def find_matches(
+        self,
+        piece1: Piece,
+        piece2: Piece,
+    ) -> list[Match]:
+        desc_dist = self.dist(piece1, piece2)
+
+        flat_dist = desc_dist.flatten()
+        ordering = np.argsort(flat_dist)
+        idxs1, idxs2 = np.unravel_index(ordering, desc_dist.shape)
+        return [
+            Match(
+                dist=desc_dist[i, j],
+                piece1=piece1,
+                piece2=piece2,
+                idxs1=np.array(piece1.descriptor.segments[i].interval),
+                idxs2=np.array(piece2.descriptor.segments[j].interval)[::-1],
+            )
+            for i, j in zip(idxs1, idxs2)
+            if not np.isinf(desc_dist[i, j])
+        ]
+
+    def find_all_matches(self, pieces: list[Piece]):
+        matches = [
+            self.find_matches(piece1, piece2)[:50]
+            for piece1, piece2 in combinations(pieces, 2)
+        ]
+        matches = list(flatten(matches))
+        matches.sort(key=lambda match: match.dist)
+        return matches
+
+    def _filter_initial(self, pair_matches: list[Match]):
+        return [match for match in pair_matches if match.is_initial_transform_valid()]
+
+    def find_all_matches_with_preprocessing(
+        self,
+        pieces: list[Piece],
+        n_processes: int = 4,
+    ) -> list[Match]:
+        matches = [
+            self.find_matches(piece1, piece2)[:50]
+            for piece1, piece2 in combinations(pieces, 2)
+        ]
+        with Pool(n_processes) as p:
+            matches = p.map(
+                self._filter_initial,
+                tqdm(matches, "Filtering matches based on initial transformation"),
+            )
+
+        matches = list(flatten(matches))
+        matches.sort(key=lambda match: match.dist)
+        return matches
 
 
 class MultiOsculatingCircleDescriptor(OsculatingCircleDescriptor):
