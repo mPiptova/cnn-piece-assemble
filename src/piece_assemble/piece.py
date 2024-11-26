@@ -1,26 +1,20 @@
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import numpy as np
 import shapely
-from shapely import Polygon, geometry
+from shapely import Polygon, geometry, make_valid
 from skimage.filters import rank
 from skimage.measure import approximate_polygon
 from skimage.morphology import diamond, dilation, disk, erosion
 
 from geometry import Transformation, extend_interval
-from image import load_bin_img, load_img
 from piece_assemble.contours import extract_contours, smooth_contours
 from piece_assemble.types import Points
 
 if TYPE_CHECKING:
-    from piece_assemble.descriptor import (
-        Descriptor,
-        DescriptorExtractor,
-        DummyDescriptorExtractor,
-    )
+    from piece_assemble.descriptor import Descriptor, DescriptorExtractor
     from piece_assemble.segment import ApproximatingArc
     from piece_assemble.types import BinImg, NpImage
 
@@ -90,19 +84,23 @@ class Piece:
         mask_eroded = erosion(mask.astype(bool), diamond(1))
         footprint = disk(img_mean_window_r)
         img_int = (img * 255).astype("uint8")
-        if len(img.shape) == 3:
-            img_avg = (
-                np.stack(
-                    [
-                        rank.mean(img_int[:, :, channel], footprint, mask=mask_eroded)
-                        for channel in range(3)
-                    ],
-                    axis=2,
+        img_avg = img
+        if img_mean_window_r != 0:
+            if len(img.shape) == 3:
+                img_avg = (
+                    np.stack(
+                        [
+                            rank.mean(
+                                img_int[:, :, channel], footprint, mask=mask_eroded
+                            )
+                            for channel in range(3)
+                        ],
+                        axis=2,
+                    )
+                    / 255
                 )
-                / 255
-            )
-        else:
-            img_avg = rank.mean(img, footprint, mask=mask_eroded)
+            else:
+                img_avg = rank.mean(img, footprint, mask=mask_eroded)
 
         # Dilate mask to compensate for natural erosion of pieces
         contours = extract_contours(dilation(mask, diamond(1)).astype("uint8"))
@@ -117,6 +115,7 @@ class Piece:
         polygon = cls._get_polygon_approximation(
             polygon_approximation_tolerance, contour, holes
         )
+        polygon = make_valid(polygon)
         hole_descriptors = cls._extract_hole_descriptors(holes, img_avg)
 
         return cls(
@@ -202,31 +201,8 @@ class Piece:
             [self.segment_descriptor(arc.contour) for arc in self.descriptor.segments]
         )
 
-    def get_segment_count(self, idxs: np.ndarray) -> int:
-        """Return the number of segments included in the given contour selection.
-
-        Parameters
-        ----------
-        idxs
-            Indexes defining the contour section.
-
-
-        Returns
-        -------
-        segment_count
-            The total number of segments that the border section spans over.
-        """
-        unique_arc_idxs1 = np.unique(
-            self.descriptor.contour_segment_idxs[idxs], return_counts=True
-        )
-
-        arc_idxs = [
-            idx
-            for idx, count in zip(*unique_arc_idxs1)
-            if idx != -1 and count > 0.7 * len(self.descriptor.segments[idx])
-        ]
-
-        return len(arc_idxs)
+    def to_piece(self) -> Piece:
+        return self
 
 
 class TransformedPiece(Piece):
@@ -258,68 +234,5 @@ class TransformedPiece(Piece):
             self._piece, self.transformation.compose(transformation)
         )
 
-
-def load_images(
-    img_dir: str, scale: float = 1
-) -> tuple[list[str], list[NpImage], list[BinImg]]:
-    """Load all piece images from the given directory.
-
-    Parameters
-    ----------
-    img_dir
-        Path to the directory containing piece images.
-        Two images are required for every image, one PNG binary mask with "_mask" suffix
-        and one JPG image with piece itself, both need to have the same size.
-    scale
-        All returned images will be rescaled by this factor.
-
-    Returns
-    -------
-    img_ids
-        A list of image names.
-    imgs
-        A list of 3-channel images of pieces
-    masks
-        A list of binary piece masks.
-    """
-    img_ids = [
-        name
-        for name in os.listdir(img_dir)
-        if not name.endswith("_mask.png")
-        and name not in ["pieces.json", "original.png"]
-    ]
-
-    imgs = [load_img(os.path.join(img_dir, name), scale) for name in img_ids]
-    img_ids = [name.split(".")[0] for name in img_ids]
-    masks = [
-        load_bin_img(os.path.join(img_dir, f"{name}_mask.png"), scale)
-        for name in img_ids
-    ]
-    return img_ids, imgs, masks
-
-
-def load_pieces(
-    path: str, descriptor: DescriptorExtractor | None = None
-) -> dict[Piece]:
-    """
-    Load pieces from the given directory.
-
-    Parameters
-    ----------
-    path
-        Path to the directory containing piece images.
-
-    Returns
-    -------
-    pieces
-        A dictionary of Piece objects.
-    """
-    if descriptor is None:
-        descriptor = DummyDescriptorExtractor()
-
-    img_ids, imgs, masks = load_images(path)
-
-    return {
-        img_ids[i]: Piece.from_image(img_ids[i], imgs[i], masks[i], descriptor, 0)
-        for i in range(len(img_ids))
-    }
+    def to_piece(self) -> Piece:
+        return self._piece

@@ -8,56 +8,16 @@ python src/piece_assemble/dataset/create.py \
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from piece_assemble.piece import Piece
-    from piece_assemble.types import Points
-
 import argparse
-import json
 import os
 
 import numpy as np
 from tqdm import tqdm
 
-from geometry import Transformation
-from piece_assemble.models.data import get_correspondence_matrix, img_to_patches
-from piece_assemble.piece import TransformedPiece, load_pieces
-
-
-def load_puzzle(path: str) -> tuple[dict[TransformedPiece], list[list[str]]]:
-    """
-    Load puzzle from the given directory.
-
-    Puzzle is represented as a dictionary of TransformedPiece objects and
-    a list of lists of neighbor piece names.
-
-    Parameters
-    ----------
-    path
-        Path to the directory containing puzzle pieces.
-
-    Returns
-    -------
-    pieces
-        A dictionary of TransformedPiece objects.
-    neighbors
-        A list of lists of neighbor piece names.
-    """
-    pieces = load_pieces(path)
-
-    with open(os.path.join(path, "pieces.json"), "r") as f:
-        pieces_json = json.load(f)
-
-    transformed_pieces = {
-        p["id"]: TransformedPiece(
-            pieces[p["id"]], Transformation.from_dict(p["transformation"])
-        )
-        for p in pieces_json["transformed_pieces"]
-    }
-
-    return transformed_pieces, pieces_json["neighbors"]
+from piece_assemble.dataset import get_img_patches_from_piece
+from piece_assemble.load import load_puzzle
+from piece_assemble.models.data import get_correspondence_matrix
+from piece_assemble.piece import TransformedPiece
 
 
 def rename_pieces(
@@ -144,31 +104,6 @@ def create_dataset(
 
         store_neighbors(pieces, neighbors, target_dir, neighbors_index_path, i)
         store_data(pieces, window_size, target_dir, data_index_path, i)
-
-
-def get_img_patches_from_piece(piece: Piece, window_size: int) -> np.ndarray:
-    """
-    Extract image patches from the given piece.
-
-    Parameters
-    ----------
-    piece
-        A Piece object.
-    window_size
-        Size of the sliding window used to extract patches.
-
-    Returns
-    -------
-    patches
-        An array of image patches.
-    """
-    return get_img_patches(piece.contour, piece.img, window_size)
-
-
-def get_img_patches(contour: Points, img: np.ndarray, window_size: int) -> np.ndarray:
-    patches = img_to_patches(contour, img, window_size)
-    patches = np.array(patches)
-    return patches.reshape((patches.shape[0], -1))
 
 
 def store_data(

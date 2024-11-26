@@ -1,10 +1,18 @@
+from __future__ import annotations
+
 import math
 import os
-from typing import Generator
+from typing import TYPE_CHECKING, Generator
 
 import numpy as np
 import pandas as pd
 import torch
+
+from piece_assemble.models.data import img_to_patches
+
+if TYPE_CHECKING:
+    from piece_assemble.piece import Piece
+    from piece_assemble.types import Points
 
 
 class PairsDataset(torch.utils.data.Dataset):
@@ -189,3 +197,28 @@ class BatchCollator:
         matrices = torch.stack(matrices)
 
         return (pieces1, pieces2), matrices
+
+
+def get_img_patches_from_piece(piece: Piece, window_size: int) -> np.ndarray:
+    """
+    Extract image patches from the given piece.
+
+    Parameters
+    ----------
+    piece
+        A Piece object.
+    window_size
+        Size of the sliding window used to extract patches.
+
+    Returns
+    -------
+    patches
+        An array of image patches.
+    """
+    return get_img_patches(piece.contour, piece.img, window_size)
+
+
+def get_img_patches(contour: Points, img: np.ndarray, window_size: int) -> np.ndarray:
+    patches = img_to_patches(contour, img, window_size)
+    patches = np.array(patches)
+    return patches.reshape((patches.shape[0], -1))
