@@ -311,6 +311,8 @@ def load_model(
     checkpoint_path = os.path.join(path, f"{model_id}_{checkpoint_version}")
 
     model = PairNetwork(**config["model"])
-    model.load_state_dict(torch.load(checkpoint_path, weights_only=False))
+    model.load_state_dict(
+        torch.load(checkpoint_path, weights_only=False, map_location="cpu")
+    )
 
     return model
