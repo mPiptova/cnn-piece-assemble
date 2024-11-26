@@ -568,6 +568,8 @@ class Clustering:
         new_cluster
             Extended clusters (only valid ones).
         """
+        if len(self.trusted_clusters) == 0:
+            return clusters
         new_clusters = {}
         for cluster in tqdm(clusters, "Applying trusted clusters"):
             for trusted_cluster in self.trusted_clusters:
