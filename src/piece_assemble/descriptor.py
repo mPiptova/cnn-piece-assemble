@@ -6,12 +6,19 @@ from multiprocessing import Pool
 from typing import TYPE_CHECKING
 
 import numpy as np
+import torch
 from more_itertools import flatten
 from tqdm import tqdm
 
 from geometry import extend_interval, extend_intervals, interval_difference, points_dist
 from piece_assemble.contours import get_osculating_circles, get_validity_intervals
+from piece_assemble.dataset import BatchCollator, get_img_patches, preprocess_piece_data
 from piece_assemble.matching.match import Match
+from piece_assemble.models import PairNetwork
+from piece_assemble.models.predict import (
+    embeddings_to_correspondence_matrix,
+    model_output_to_match,
+)
 from piece_assemble.segment import ApproximatingArc
 
 if TYPE_CHECKING:
@@ -21,9 +28,7 @@ if TYPE_CHECKING:
 
 
 class Descriptor(ABC):
-    @abstractmethod
-    def to_array(self) -> np.ndarray:
-        return NotImplemented
+    pass
 
 
 class SegmentDescriptor(Descriptor):
@@ -33,12 +38,58 @@ class SegmentDescriptor(Descriptor):
         features: np.ndarray,
         contour_segment_idxs: np.ndarray,
     ):
+        super().__init__()
         self.segments = segments
         self.features = features
         self.contour_segment_idxs = contour_segment_idxs
 
-    def to_array(self) -> np.ndarray:
-        return self.features
+    def get_segment_count(self, idxs: np.ndarray) -> int:
+        """Return the number of segments included in the given contour selection.
+
+        Parameters
+        ----------
+        idxs
+            Indexes defining the contour section.
+
+
+        Returns
+        -------
+        segment_count
+            The total number of segments that the border section spans over.
+        """
+        unique_arc_idxs1 = np.unique(
+            self.contour_segment_idxs[idxs], return_counts=True
+        )
+
+        arc_idxs = [
+            idx
+            for idx, count in zip(*unique_arc_idxs1)
+            if idx != -1 and count > 0.7 * len(self.segments[idx])
+        ]
+
+        return len(arc_idxs)
+
+    def get_complexity(self, idxs: np.ndarray) -> float:
+        return self.get_segment_count(idxs)
+
+
+class EmbeddingDescriptor(Descriptor):
+    def __init__(self, emb1: np.ndarray, emb2: np.ndarray):
+        super().__init__()
+        self.emb1 = emb1
+        self.emb2 = emb2
+
+    def get_complexity(self, idxs: np.ndarray) -> float:
+        return 1
+
+
+class DummyDescriptor(Descriptor):
+    def __init__(self):
+        super().__init__()
+        pass
+
+    def get_complexity(self, idxs: np.ndarray) -> float:
+        return 1
 
 
 class DescriptorExtractor(ABC):
@@ -57,13 +108,74 @@ class DescriptorExtractor(ABC):
 
 
 class DummyDescriptorExtractor(DescriptorExtractor):
-    def extract(
-        self, contour: Points, image: NpImage
-    ) -> tuple[list[Segment], np.ndarray]:
-        return [], np.zeros((0, 0))
+    def extract(self, contour: Points, image: NpImage) -> Descriptor:
+        return DummyDescriptor()
 
     def dist(self, first: Piece, second: Piece) -> np.ndarray:
         return np.zeros((0, 0))
+
+    def find_all_matches(
+        self,
+        pieces: list[Piece],
+    ) -> list[Match]:
+        return []
+
+
+class EmbeddingExtractor(DescriptorExtractor):
+    def __init__(
+        self, model: PairNetwork, patch_size: int = 7, activation_threshold: float = 0.8
+    ):
+        self.model = model
+        self.collator = BatchCollator(model.padding)
+        self.activation_threshold = activation_threshold
+        self.patch_size = patch_size
+
+    def extract(self, contour: Points, image: NpImage) -> EmbeddingDescriptor:
+        data = get_img_patches(contour, image, self.patch_size)
+        data = preprocess_piece_data(data)
+        input, _ = self.collator([(data, data, None)])
+        device = next(self.model.parameters()).device
+        input = (input[0].to(device), input[1].to(device))
+
+        self.model.eval()
+        with torch.no_grad():
+            e_first = (
+                self.model.embedding_network1(input[0])
+                .detach()
+                .cpu()
+                .numpy()[0][:, : data.shape[0]]
+            )
+            e_second = (
+                self.model.embedding_network2(input[1])
+                .detach()
+                .cpu()
+                .numpy()[0][:, : data.shape[0]]
+            )
+
+        return EmbeddingDescriptor(e_first, e_second)
+
+    def dist(self, first: Piece, second: Piece) -> np.ndarray:
+        return 1 - embeddings_to_correspondence_matrix(
+            first.descriptor.emb1, second.descriptor.emb2
+        )
+
+    def find_all_matches(
+        self,
+        pieces: list[Piece],
+    ) -> list[Match]:
+        all_pairs = [(x, y) for x, y in list(combinations(pieces, 2))]
+        matches = []
+
+        for piece1, piece2 in tqdm(all_pairs, desc="Finding matches"):
+            output = embeddings_to_correspondence_matrix(
+                piece1.descriptor.emb1, piece2.descriptor.emb2
+            )
+            match = model_output_to_match(
+                piece1, piece2, output, self.activation_threshold
+            )
+            if match is not None:
+                matches.append(match)
+        return matches
 
 
 class OsculatingCircleDescriptor(DescriptorExtractor):
