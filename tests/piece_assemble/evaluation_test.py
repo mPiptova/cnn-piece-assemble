@@ -86,12 +86,12 @@ from piece_assemble.evaluation import (
     ],
 )
 def test_fixed_position_correct_piece_ratio(
-    pred_transformations,
-    true_transformations,
-    angle_tol,
-    translation_tol,
-    expected_result,
-):
+    pred_transformations: dict,
+    true_transformations: dict,
+    angle_tol: float,
+    translation_tol: float,
+    expected_result: float,
+) -> None:
     pred_transformations = {
         id: Transformation.from_dict(t) for id, t in pred_transformations.items()
     }
@@ -220,12 +220,12 @@ def test_fixed_position_correct_piece_ratio(
     ],
 )
 def test_correct_piece_ratio(
-    pred_transformations,
-    true_transformations,
-    angle_tol,
-    translation_tol,
-    expected_result,
-):
+    pred_transformations: dict,
+    true_transformations: dict,
+    angle_tol: float,
+    translation_tol: float,
+    expected_result: float,
+) -> None:
     assembled = {
         "transformed_pieces": [
             {"id": piece_id, "transformation": transformation}

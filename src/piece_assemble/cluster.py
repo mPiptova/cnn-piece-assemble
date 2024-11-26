@@ -60,13 +60,14 @@ class ClusterScorer(ClusterScorerBase):
         color_score = -cluster.color_dist * self.w_color_dist
         dist_score = -cluster.dist * self.w_dist
         border_length_score = cluster.border_length * self.w_border_length
-        return (
+        score: float = (
             convexity_score
             + complexity_score
             + color_score
             + dist_score
             + border_length_score
         )
+        return score
 
 
 class MergeError(Exception):
@@ -95,13 +96,13 @@ class Cluster:
     def __init__(
         self,
         pieces: dict[str, TransformedPiece],
-        scorer: ClusterScorer,
+        scorer: ClusterScorerBase,
         self_intersection_tol: float,
         border_dist_tol: float,
         rotation_tol: float,
         translation_tol: float,
         neighbor_classifier: NeighborClassifierBase,
-        parents: list[Cluster] = None,
+        parents: list[Cluster] | None = None,
     ) -> None:
         self.pieces = pieces
         self.parents = parents
@@ -178,15 +179,15 @@ class Cluster:
             dists.append(np.linalg.norm(b1 - b2, axis=1))
 
         if len(dists) == 0:
-            return np.inf
+            return np.inf  # type: ignore
 
         dists = np.concatenate(dists)
-        return np.mean(dists)
+        return np.mean(dists)  # type: ignore
 
     @cached_property
     def self_intersection(self) -> float:
         polygons = self.transformed_polygons
-        return max(
+        return max(  # type: ignore
             [
                 p1.intersection(p2).area / min(p1.area, p2.area)
                 for p1, p2 in combinations(polygons, 2)
@@ -199,9 +200,10 @@ class Cluster:
 
     def intersection(self, polygon: Polygon) -> float:
         polygons = self.transformed_polygons
-        return max(
+        m: float = max(
             [p.intersection(polygon).area / min(p.area, polygon.area) for p in polygons]
         )
+        return m
 
     @cached_property
     def polygon_union(self) -> Polygon:
@@ -210,7 +212,7 @@ class Cluster:
         return unary_union(polygons)
 
     @cached_property
-    def max_hole_area(self):
+    def max_hole_area(self) -> float:
         union = self.polygon_union
 
         if union.geom_type == "Polygon":
@@ -224,7 +226,7 @@ class Cluster:
         hole_areas = list(flatten(hole_areas))
         if len(hole_areas) == 0:
             return 0
-        return np.max(hole_areas)
+        return np.max(hole_areas)  # type: ignore
 
     def _fix_overlapping_pieces(self, pieces_to_keep: set[str]) -> Cluster:
         new_pieces = self.pieces.copy()
@@ -259,7 +261,7 @@ class Cluster:
 
     def find_unifying_transform(
         self, other: Cluster
-    ) -> tuple[Transformation, Transformation]:
+    ) -> tuple[Transformation | None, Transformation | None]:
         """Find transformations which unify the common pieces of two clusters.
 
         Parameters
@@ -313,7 +315,7 @@ class Cluster:
             try_fix = False
 
         t1, t2 = self.find_unifying_transform(other)
-        if t1 is None:
+        if t1 is None or t2 is None:
             raise DisjunctClustersError(
                 f"Pieces {self.piece_ids} and {other.piece_ids} "
                 "have no common elements."
@@ -402,7 +404,7 @@ class Cluster:
             return False
 
         t1, t2 = self.find_unifying_transform(other)
-        if t1 is None:
+        if t1 is None or t2 is None:
             return False
 
         cluster1 = self.transform(t1)
@@ -437,7 +439,7 @@ class Cluster:
             return False
 
         t1, t2 = self.find_unifying_transform(other)
-        if t1 is None:
+        if t1 is None or t2 is None:
             return False
 
         cluster1 = self.transform(t1)
@@ -468,7 +470,7 @@ class Cluster:
 
         return new_cluster.self_intersection < self.self_intersection_tol
 
-    def finetune_transformations(self, num_iters: int = 3):
+    def finetune_transformations(self, num_iters: int = 3) -> Cluster:
         """Improve transformations using ICP algorithm.
 
         Helps preventing cumulation of small errors in large clusters.
@@ -522,15 +524,17 @@ class Cluster:
     @cached_property
     def convexity(self) -> float:
         union_polygon = self.polygon_union
-        return union_polygon.area / union_polygon.convex_hull.area
+        return union_polygon.area / union_polygon.convex_hull.area  # type: ignore
 
-    def indicator(self, all_ids):
+    def indicator(self, all_ids: list[str]) -> np.ndarray:
         return np.array(
             [True if piece_id in self.piece_ids else False for piece_id in all_ids]
         )
 
     @cached_property
-    def matches_border_idxs(self):
+    def matches_border_idxs(
+        self,
+    ) -> dict:
         matches_border_dict = {}
 
         if self.parents is not None:
@@ -561,7 +565,9 @@ class Cluster:
 
         return matches_border_dict
 
-    def get_match_border_idxs(self, key1, key2):
+    def get_match_border_idxs(
+        self, key1: str, key2: str
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
         if (key1, key2) in self.matches_border_idxs.keys():
             idxs1, idxs2 = self.matches_border_idxs[(key1, key2)]
         elif (key2, key1) in self.matches_border_idxs.keys():
@@ -571,7 +577,9 @@ class Cluster:
 
         return idxs1, idxs2
 
-    def get_match_border_coordinates(self, key1, key2):
+    def get_match_border_coordinates(
+        self, key1: str, key2: str
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
         idxs1, idxs2 = self.get_match_border_idxs(key1, key2)
         if idxs1 is None:
             return None, None
@@ -582,7 +590,7 @@ class Cluster:
         return coords1, coords2
 
     @cached_property
-    def complexity(self):
+    def complexity(self) -> float:
         total_complexity = 0
         for key1, key2 in combinations(self.piece_ids, 2):
             total_complexity += get_border_complexity(
@@ -591,7 +599,7 @@ class Cluster:
 
         return total_complexity
 
-    def get_match_color_dist(self, key1: str, key2: str):
+    def get_match_color_dist(self, key1: str, key2: str) -> float:
         piece1 = self.pieces[key1]
         piece2 = self.pieces[key2]
 
@@ -609,10 +617,10 @@ class Cluster:
         values2 = gaussian_filter1d(values2, 10, axis=0)
 
         values_diff = np.abs(values1 - values2)
-        return np.mean(values_diff * values_diff)
+        return np.mean(values_diff * values_diff)  # type: ignore
 
     @cached_property
-    def color_dist(self):
+    def color_dist(self) -> float:
         dists = []
         for key1, key2 in combinations(self.piece_ids, 2):
             s = self.get_match_color_dist(key1, key2)
@@ -621,10 +629,10 @@ class Cluster:
 
         if len(dists) == 0:
             return 0.000001
-        return np.max(dists)
+        return np.max(dists)  # type: ignore
 
     @cached_property
-    def neighbor_matrix(self):
+    def neighbor_matrix(self) -> np.ndarray:
         piece_ids = list(self.piece_ids)
         matrix = np.full([len(self.pieces)] * 2, False)
         for i1, i2 in combinations(range(len(piece_ids)), 2):
@@ -637,8 +645,8 @@ class Cluster:
         return matrix
 
     @cached_property
-    def avg_neighbor_count(self):
-        return np.sum(self.neighbor_matrix, axis=0).mean()
+    def avg_neighbor_count(self) -> float:
+        return np.sum(self.neighbor_matrix, axis=0).mean()  # type: ignore
 
     def draw(self, draw_contours: bool = False) -> np.ndarray:
         min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
@@ -710,14 +718,14 @@ class Cluster:
         return img
 
     @cached_property
-    def graph(self):
+    def graph(self) -> PyGraph:
         graph = PyGraph()
         graph.add_nodes_from(list(self.piece_ids))
         edges = np.where(self.neighbor_matrix)
         graph.add_edges_from(list(zip(edges[0], edges[1], [None] * len(edges[0]))))
         return graph
 
-    def get_neighbor_pairs(self):
+    def get_neighbor_pairs(self) -> set[frozenset[str]]:
         neighbor_pairs = set()
         for i, key1 in enumerate(self.piece_ids):
             for j, key2 in enumerate(self.piece_ids):

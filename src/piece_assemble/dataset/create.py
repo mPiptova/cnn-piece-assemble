@@ -21,11 +21,11 @@ from piece_assemble.piece import TransformedPiece
 
 
 def rename_pieces(
-    pieces: dict[TransformedPiece],
+    pieces: dict[str, TransformedPiece],
     neighbors: list[list[str]],
     offset: int,
     id_length: int = 7,
-) -> tuple[dict[TransformedPiece], list[list[str]]]:
+) -> tuple[dict[str, TransformedPiece], list[list[str]]]:
     """
     Rename pieces in the given dictionary.
 
@@ -51,18 +51,13 @@ def rename_pieces(
         A list of lists of neighbor piece names.
     """
     id_mappings = {
-        piece.piece.name: f"{i + offset:0{id_length}}"
+        piece.name: f"{i + offset:0{id_length}}"
         for i, piece in enumerate(pieces.values())
     }
 
-    renamed_pieces = {
-        id_mappings[piece.piece.name]: TransformedPiece(
-            piece.piece, piece.transformation
-        )
-        for piece in pieces.values()
-    }
+    renamed_pieces = {id_mappings[piece.name]: piece for piece in pieces.values()}
     for piece in renamed_pieces.values():
-        piece.piece.name = id_mappings[piece.piece.name]
+        piece.name = id_mappings[piece.name]
 
     renamed_neighbors = [
         [id_mappings[piece] for piece in neighbor] for neighbor in neighbors
@@ -107,12 +102,12 @@ def create_dataset(
 
 
 def store_data(
-    pieces: dict[TransformedPiece],
+    pieces: dict[str, TransformedPiece],
     window_size: int,
     target_dir: str,
     data_index_path: str,
     i: int,
-):
+) -> None:
     """
     Store image patches from the given pieces.
 
@@ -134,20 +129,20 @@ def store_data(
 
     with open(data_index_path, "a+") as f:
         for piece in pieces.values():
-            cols = [piece.piece.name, piece_data_name]
+            cols = [piece.name, piece_data_name]
             f.write(f"{','.join(cols)}\n")
 
     np.savez_compressed(
         piece_data_path,
         **{
-            piece.piece.name: get_img_patches_from_piece(piece.piece, window_size)
+            piece.name: get_img_patches_from_piece(piece.to_piece(), window_size)
             for piece in pieces.values()
         },
     )
 
 
 def store_neighbors(
-    pieces: dict[TransformedPiece],
+    pieces: dict[str, TransformedPiece],
     neighbors: list[list[str]],
     target_dir: str,
     neighbors_index_path: str,

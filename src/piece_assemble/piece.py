@@ -30,7 +30,7 @@ class Piece:
         descriptor_extractor: DescriptorExtractor,
         descriptor: Descriptor,
         holes: list[Points],
-        hole_descriptors: list[Descriptor],
+        hole_descriptors: list[Descriptor] | None,
         polygon: Polygon,
     ):
         self.name = name
@@ -137,7 +137,7 @@ class Piece:
         polygon_approximation_tolerance: float,
         contour: Points,
         holes: list[Points],
-    ) -> None:
+    ) -> Polygon:
         polygon = geometry.Polygon(
             approximate_polygon(contour, polygon_approximation_tolerance)
         )
@@ -162,9 +162,9 @@ class Piece:
         return
 
     def get_segment_lengths(self) -> np.ndarray:
-        def arc_len(arc: ApproximatingArc):
+        def arc_len(arc: ApproximatingArc) -> int:
             extended_interval = extend_interval(arc.interval, len(self.contour))
-            return extended_interval[1] - extended_interval[0]
+            return int(extended_interval[1] - extended_interval[0])
 
         return np.array([arc_len(arc) for arc in self.descriptor.segments])
 
@@ -190,16 +190,19 @@ class Piece:
             ):
                 return True
             length = len(arc)
-            return length >= np.abs(arc.radius) * min_angle
+            return length >= np.abs(arc.radius) * min_angle  # type: ignore
 
         new_arcs = [arc for arc in self.descriptor.segments if is_large_enough(arc)]
         if len(new_arcs) == len(self.descriptor.segments):
             return
 
-        self.descriptor.segments = new_arcs
-        self.descriptor = np.array(
-            [self.segment_descriptor(arc.contour) for arc in self.descriptor.segments]
-        )
+        # self.descriptor.segments = new_arcs
+        # self.descriptor = np.array(
+        #     [
+        #         self.segment_descriptor(arc.contour)
+        #         for arc in self.descriptor.segments
+        #     ]  # type: ignore
+        # )
 
     def to_piece(self) -> Piece:
         return self

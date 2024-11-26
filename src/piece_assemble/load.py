@@ -54,7 +54,7 @@ def load_images(
 
 def load_pieces(
     path: str, descriptor: DescriptorExtractor | None = None
-) -> dict[Piece]:
+) -> dict[str, Piece]:
     """
     Load pieces from the given directory.
 
@@ -79,7 +79,7 @@ def load_pieces(
     }
 
 
-def load_puzzle(path: str) -> tuple[dict[TransformedPiece], list[list[str]]]:
+def load_puzzle(path: str) -> tuple[dict[str, TransformedPiece], list[list[str]]]:
     """
     Load puzzle from the given directory.
 

@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def longest_continuous_subsequence(sequence: np.array, max_diff=2) -> np.array:
+def longest_continuous_subsequence(sequence: np.array, max_diff: int = 2) -> np.array:
     mask = (sequence[1:] - sequence[:-1] < max_diff).astype(int)
     mask = np.pad(mask, (1, 1), "constant", constant_values=(0, 0))
     diff = mask[1:] - mask[:-1]

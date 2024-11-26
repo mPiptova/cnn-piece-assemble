@@ -1,4 +1,4 @@
-def get_resize_shape(original_shape: tuple[int, int], max_size: str) -> tuple[int, int]:
+def get_resize_shape(original_shape: tuple[int, int], max_size: int) -> tuple[int, int]:
     if max(original_shape) <= max_size:
         return original_shape
 

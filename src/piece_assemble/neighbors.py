@@ -69,12 +69,12 @@ def get_curve_winding_angle(curve: Points) -> float:
 
     curve_angle = np.arctan2(curve_diff[:, 0], curve_diff[:, 1])
     curve_angle = np.unwrap(curve_angle, discont=np.pi)
-    return (curve_angle.max() - curve_angle.min()) / (2 * np.pi)
+    return (curve_angle.max() - curve_angle.min()) / (2 * np.pi)  # type: ignore
 
 
 def get_border_complexity(
     piece1: TransformedPiece, piece2: TransformedPiece, border_dist_tol: float
-) -> bool:
+) -> float:
     """
     Calculate the complexity of a border between two pieces.
 
@@ -99,18 +99,18 @@ def get_border_complexity(
     """
     idxs, piece = longest_continuous_border(piece1, piece2, border_dist_tol)
 
-    if len(idxs) == 0:
+    if len(idxs) == 0 or piece is None:
         return 0
 
     segment_count = piece.descriptor.get_complexity(idxs)
     winding_angle = get_curve_winding_angle(piece.contour[idxs])
 
-    return segment_count * winding_angle
+    return segment_count * winding_angle  # type: ignore
 
 
 def longest_continuous_border(
     piece1: TransformedPiece, piece2: TransformedPiece, border_dist_tol: float
-) -> tuple[np.ndarray, Piece]:
+) -> tuple[np.ndarray, Piece | None]:
 
     """
     Find the longest continuous border between two pieces, given their transformations.
@@ -139,9 +139,9 @@ def longest_continuous_border(
         border_dist_tol,
     )
     if idxs2 is None:
-        return [], None
+        return np.empty(0), None
 
-    def get_longest_continuous_idxs(idxs: np.ndarray, piece: Piece):
+    def get_longest_continuous_idxs(idxs: np.ndarray, piece: Piece) -> np.ndarray:
         idxs = np.concatenate((idxs, idxs + len(piece.contour)))
         idxs = longest_continuous_subsequence(np.unique(idxs))
         return idxs % len(piece.contour)

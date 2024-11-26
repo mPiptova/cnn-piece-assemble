@@ -82,7 +82,7 @@ class NegativePieceExtractor(PieceExtractorBase):
         """Return the footprint of the median filter based on the image shape"""
         kernel_size = (np.max(shape) // 400) * 2 + 1
         kernel_size = np.clip(kernel_size, 3, 15)
-        return np.ones((kernel_size, kernel_size))
+        return np.ones((kernel_size, kernel_size))  # type: ignore
 
     def binarize(self, img: np.ndarray[int]) -> np.ndarray[bool]:
         # This method is designed for images with single colored background

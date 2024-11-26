@@ -64,15 +64,15 @@ def generate_puzzle(
     division = reduce_number_of_pieces(division, num_pieces, 1000)
     pieces = apply_division_to_image(img, division)
 
-    piece_dict = {piece.piece.name: piece for piece in pieces}
+    piece_dict = {piece.name: piece for piece in pieces}
 
     # Write original
     np_to_pil(img).save(os.path.join(output_dir, "original.png"))
 
     # Write images
     for name, piece in piece_dict.items():
-        np_to_pil(piece.piece.img).save(os.path.join(output_dir, f"{name}.png"))
-        np_to_pil(piece.piece.mask).save(os.path.join(output_dir, f"{name}_mask.png"))
+        np_to_pil(piece.img).save(os.path.join(output_dir, f"{name}.png"))
+        np_to_pil(piece.mask).save(os.path.join(output_dir, f"{name}_mask.png"))
 
     # Write cluster
     cluster = Cluster(

@@ -9,7 +9,7 @@ from scipy.spatial import KDTree
 from piece_assemble.types import Interval, Point, Points
 
 
-def point_to_line_dist(points: Points, line_segment: tuple[Point, Point]):
+def point_to_line_dist(points: Points, line_segment: tuple[Point, Point]) -> np.ndarray:
     """Compute the distance of each of given points and a line.
 
     Parameters
@@ -104,7 +104,7 @@ def extend_interval(
     return (interval[0] - cycle_length, interval[1])
 
 
-def extend_intervals(intervals: np.ndarray, cycle_length: int):
+def extend_intervals(intervals: np.ndarray, cycle_length: int) -> np.ndarray:
     """Extend the intervals in the cyclic domain.
 
     This function converts intervals such as (9, 2) to (9, 12), given that
@@ -157,8 +157,8 @@ def is_in_cyclic_interval(num: float, interval: Interval, cycle_length: int) -> 
     interval = normalize_interval(interval, cycle_length)
 
     if interval[0] < interval[1]:
-        return interval[0] <= num <= interval[1]
-    return num >= interval[0] or num <= interval[1]
+        return interval[0] <= num <= interval[1]  # type: ignore
+    return num >= interval[0] or num <= interval[1]  # type: ignore
 
 
 def interval_difference(
@@ -363,11 +363,11 @@ class Transformation:
     rotation_angle: float
     translation: Point
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.rotation_angle = self.rotation_angle % (2 * np.pi)
 
     @property
-    def rotation_matrix(self):
+    def rotation_matrix(self) -> np.ndarray:
         """Return transformation rotation matrix."""
         return get_rotation_matrix(self.rotation_angle)
 
@@ -457,5 +457,7 @@ def get_common_contour(
     return contour1[points[close_mask]], contour2[close_mask]
 
 
-def get_common_contour_length(contour1: Points, contour2: Points, tol: float = 10):
+def get_common_contour_length(
+    contour1: Points, contour2: Points, tol: float = 10
+) -> int:
     return len(get_common_contour(contour1, contour2, tol)[0])

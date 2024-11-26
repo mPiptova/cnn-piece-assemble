@@ -69,7 +69,7 @@ class ConvBlock(nn.Module):
 
         self.layers = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
 
@@ -162,12 +162,12 @@ class EmbeddingUnet(nn.Module):
 
         self.initialize()
 
-    def initialize(self):
+    def initialize(self) -> None:
         for layer in self.transpositions:
             nn.init.xavier_uniform(layer.weight.data)
             layer.bias.data.zero_()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         down_results = []
         for block in self.down_blocks[:-1]:
             x = block(x)
@@ -240,14 +240,14 @@ class PairNetwork(nn.Module):
         self.shared_weights = shared_weights
 
     @cached_property
-    def padding(self):
+    def padding(self) -> int:
         dim = 256
         device = next(self.parameters()).device
-        x = [torch.ones(1, 147, dim).to(device), torch.ones(1, 147, dim).to(device)]
+        x = (torch.ones(1, 147, dim).to(device), torch.ones(1, 147, dim).to(device))
 
         return int((dim - self.forward(x).shape[1]) / 2)
 
-    def forward(self, x):
+    def forward(self, x: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         if self.shared_weights:
             x1_x2 = torch.cat([x[0], x[1]], dim=0)
             x1_x2_emb = self.embedding_network1(x1_x2)
@@ -258,7 +258,7 @@ class PairNetwork(nn.Module):
             x1_emb = self.embedding_network1(x[0])
             x2_emb = self.embedding_network2(x[1])
 
-        matrix = x1_emb.transpose(1, 2) @ x2_emb
+        matrix: torch.Tensor = x1_emb.transpose(1, 2) @ x2_emb
         return matrix
 
 
@@ -281,7 +281,7 @@ def load_model_config(
 
     """
     config_path = os.path.join(path, f"{model_id}_config.json")
-    config = json.load(open(config_path))
+    config: dict = json.load(open(config_path))
     return config
 
 

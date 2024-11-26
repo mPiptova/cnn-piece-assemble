@@ -6,7 +6,7 @@ import random
 import shutil
 import time
 from multiprocessing import Manager, Pool
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 from skimage.transform import rescale
@@ -18,36 +18,34 @@ from piece_assemble.cluster import Cluster
 if TYPE_CHECKING:
     from piece_assemble.cluster import ClusterScorer
     from piece_assemble.descriptor import DescriptorExtractor
-    from piece_assemble.matching import Match
+    from piece_assemble.matching.match import CompactMatch, Match
     from piece_assemble.piece import Piece
 
 
 class Queue:
     def __init__(self, parallel: bool = False):
-        self.parallel = parallel
+        self._queue = None
+        self._list = []
         if parallel:
             self._queue = Manager().Queue()
 
-        else:
-            self._queue = []
-
-    def empty(self):
-        if self.parallel:
+    def empty(self) -> bool:
+        if self._queue is not None:
             return self._queue.empty()
         else:
-            return len(self._queue) == 0
+            return len(self._list) == 0
 
-    def get(self):
-        if self.parallel:
-            return self._queue.get()
+    def get(self) -> CompactMatch:
+        if self._queue is not None:
+            return self._queue.get()  # type: ignore
         else:
-            return self._queue.pop(0)
+            return self._list.pop(0)  # type: ignore
 
-    def put(self, item):
-        if self.parallel:
+    def put(self, item: CompactMatch | None) -> None:
+        if self._queue is not None:
             self._queue.put(item)
         else:
-            self._queue.append(item)
+            self._list.append(item)
 
 
 class Clustering:
@@ -72,7 +70,7 @@ class Clustering:
     def best_cluster(self) -> Cluster | None:
         if len(self.clusters) == 0:
             return None
-        return self.clusters[0]
+        return self.clusters[0]  # type: ignore
 
     def reset(self, reset_all_matches: bool = False) -> None:
         self.clusters = []
@@ -87,7 +85,7 @@ class Clustering:
 
     def set_logging(
         self,
-        output_images_path: str,
+        output_images_path: str | None,
         store_new_matches: bool = True,
         store_old_matches: bool = False,
         store_trusted_clusters: bool = False,
@@ -96,6 +94,9 @@ class Clustering:
         self._store_new_matches = store_new_matches
         self._store_old_matches = store_old_matches
         self._store_trusted_clusters = store_trusted_clusters
+
+        if output_images_path is None:
+            return
 
         try:
             os.mkdir(output_images_path)
@@ -161,8 +162,8 @@ class Clustering:
         n_processes: int,
         min_complexity: int,
         queue: Queue,
-    ):
-        matches = self.all_matches.copy()
+    ) -> None:
+        matches = self.all_matches.copy()  # type: ignore
         with Pool(n_processes) as p:
             self._worker_count = n_processes
             for j in range(0, self._worker_count):
@@ -199,7 +200,7 @@ class Clustering:
         n_new_matches: int,
         min_complexity: int,
         queue: Queue,
-    ):
+    ) -> None:
         for match in tqdm(self.all_matches, desc="Generating matches"):
             compact_match = match.verify(
                 self.cluster_config["border_dist_tol"],
@@ -231,7 +232,7 @@ class Clustering:
         n_new_matches: int,
         min_complexity: float,
         queue: Queue,
-    ):
+    ) -> None:
         print(f"ITERATION {i}")
 
         new_pair_clusters = self.get_new_pair_clusters(
@@ -282,6 +283,10 @@ class Clustering:
             and use_previous_clusters
         ):
             self.assembled = True
+
+        if self.best_cluster is None:
+            return
+
         if len(self.clusters) > 0 and len(self.best_cluster.piece_ids) == len(
             self.all_ids
         ):
@@ -330,11 +335,13 @@ class Clustering:
                     pbar.update(1)
             return new_pair_clusters
 
-    def process_new_cluster(self, new_cluster, trusted_cluster_config, min_complexity):
+    def process_new_cluster(
+        self, new_cluster: Cluster, trusted_cluster_config: dict, min_complexity: float
+    ) -> Cluster | None:
         if type(min_complexity) in (int, float):
             min_complexity = [min_complexity, min_complexity]
         if new_cluster.complexity < min_complexity[1]:
-            return
+            return None
 
         new_cluster_list = self.update_trusted_clusters(
             [new_cluster],
@@ -343,7 +350,7 @@ class Clustering:
         new_cluster_list = self._check_new_clusters(new_cluster_list)
 
         if len(new_cluster_list) == 0:
-            return
+            return None
         new_cluster = new_cluster_list[0]
 
         new_keys = frozenset(new_cluster.piece_ids)
@@ -359,7 +366,7 @@ class Clustering:
                 break
 
         if is_duplicate:
-            return
+            return None
 
         all_found_pair_for_keys.append({"cluster": new_cluster, "count": 1})
         self.all_pair_clusters[new_keys] = all_found_pair_for_keys
@@ -368,6 +375,8 @@ class Clustering:
             # Use this match now only if it's interesting enough, otherwise
             # just remember it to use it later
             return new_cluster
+
+        return None
 
     def combine(
         self,
@@ -521,7 +530,7 @@ class Clustering:
             return self.trusted_clusters
         return clusters
 
-    def cluster_selection(self, clusters: list[Cluster]):
+    def cluster_selection(self, clusters: list[Cluster]) -> list[Cluster]:
         """Select best cluster representative.
 
         Parameters
@@ -556,7 +565,7 @@ class Clustering:
         selection.sort(key=lambda cluster: cluster.score, reverse=True)
         return selection
 
-    def apply_trusted_clusters(self, clusters: Cluster) -> list[Cluster]:
+    def apply_trusted_clusters(self, clusters: list[Cluster]) -> list[Cluster]:
         """Extend given clusters by trusted clusters.
 
         Parameters
@@ -597,7 +606,9 @@ class Clustering:
 
         return list(new_clusters.values())
 
-    def update_trusted_clusters(self, clusters, trust_function) -> list[Cluster]:
+    def update_trusted_clusters(
+        self, clusters: list[Cluster], trust_function: Callable
+    ) -> list[Cluster]:
         other_clusters = []
         for cluster in clusters:
             used_trusted_clusters = []
@@ -623,7 +634,7 @@ class Clustering:
                     self.trusted_clusters.remove(trusted_cluster)
         return other_clusters
 
-    def _check_new_clusters(self, clusters) -> list[Cluster]:
+    def _check_new_clusters(self, clusters: list[Cluster]) -> list[Cluster]:
         selected_clusters = []
         for cluster in clusters:
             can_be_used = True
@@ -720,7 +731,7 @@ class Clustering:
             shutil.rmtree(base_dir)
             os.mkdir(base_dir)
 
-        def get_image_path(i, cluster):
+        def get_image_path(i: int, cluster: Cluster) -> str:
             image_name = (
                 f"{name}_{i:03d}_score{cluster.score:.2f}"
                 + f"_color{cluster.color_dist:.3f}_dist{cluster.dist:.3f}"
@@ -738,7 +749,7 @@ def cluster_can_be_trusted(
     complexity_threshold: float,
     dist_threshold: float,
     color_threshold: float,
-):
+) -> bool:
     """
     Check if a cluster can be trusted.
 
@@ -771,7 +782,7 @@ def matches_checker(
     queue: Queue,
     config: dict,
     icp_max_iters: int,
-    icp_min_change: 0.5,
+    icp_min_change: float = 0.5,
 ) -> None:
     try:
         for match in matches:

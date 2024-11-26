@@ -53,7 +53,7 @@ def train_one_epoch(
     tb_writer: SummaryWriter,
     epoch_index: int,
     log_interval: int = 50,
-):
+) -> float:
     """
     Trains the model for one epoch.
     """
@@ -97,7 +97,7 @@ def evaluate(
     model: torch.nn.Module,
     val_loader: torch.utils.data.DataLoader,
     loss_fn: torch.nn.Module,
-):
+) -> dict[str, float]:
     model.eval()
 
     running_loss = 0
@@ -162,7 +162,7 @@ def train_model(
     tb_writer: torch.utils.tensorboard.SummaryWriter,
     start_epoch: int = 0,
     puzzles: list[tuple[dict[str, TransformedPiece], list[list[str]]]] | None = None,
-):
+) -> None:
     epoch_number = start_epoch
     for epoch_number in range(epoch_number, epoch_number + epochs):
         model.train(True)

@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
@@ -35,7 +37,7 @@ def extract_contours(img_bin: BinImg) -> tuple[Points, list[Points]]:
         contours[i] for i in np.where(hierarchy[:, 3] == outer_contour_i)[0]
     ]
 
-    def contours_to_points(contour):
+    def contours_to_points(contour: Sequence) -> Points:
         return contour[:, 0, [1, 0]]
 
     return contours_to_points(outer_contour), [
@@ -221,8 +223,11 @@ def split_interest_points(
 
 
 def merge_interest_points(
-    interest_point_idxs, all_points, thr, allow_self_crossing=False
-):
+    interest_point_idxs: np.ndarray,
+    all_points: Points,
+    thr: float,
+    allow_self_crossing: bool = False,
+) -> np.ndarray:
     """Remove interest points if current interest points are too dense.
 
 

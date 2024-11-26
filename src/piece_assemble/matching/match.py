@@ -64,7 +64,8 @@ class Match:
         """
         smaller_area = min(self.polygon1.area, self.polygon2.area)
         polygon1 = transform(self.polygon1, lambda pol: transformation.apply(pol))
-        return self.polygon2.intersection(polygon1).area / smaller_area
+        ios: float = self.polygon2.intersection(polygon1).area / smaller_area
+        return ios
 
     def is_initial_transform_valid(self, ios_tol: float = 0.1) -> bool:
         """Returns bool indicated whether the initial transform is valid.
@@ -93,7 +94,7 @@ class Match:
         ios_tol: float = 0.02,
         icp_max_iters: int = 30,
         icp_min_change: float = 0.5,
-    ) -> Match | None:
+    ) -> CompactMatch | None:
         """Returns more precise Match or None if invalid.
 
         Parameters
@@ -145,7 +146,7 @@ class CompactMatch:
         self,
         scorer: ClusterScorer,
         cluster_config: dict,
-        pieces_dict: dict[Piece],
+        pieces_dict: dict[str, Piece],
     ) -> Cluster:
         """Converts Match to Cluster.
 

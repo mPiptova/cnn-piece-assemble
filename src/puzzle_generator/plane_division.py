@@ -264,7 +264,7 @@ def get_puzzle_division(
 
 def apply_division_to_image(
     img: np.ndarray, division: np.ndarray
-) -> list[tuple[np.ndarray, Transformation]]:
+) -> list[TransformedPiece]:
     """Divide image into defined pieces."""
 
     piece_props = regionprops(division)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import os
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING, Generator, Sequence
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ class PairsDataset(torch.utils.data.Dataset):
         circular_padding: int = 4,
         seed: int = 42,
         batch_size: int = 8,
-        negative_ratio=0.1,
+        negative_ratio: float = 0.1,
     ):
         super().__init__()
         self.dataset_dir = dataset_dir
@@ -69,10 +69,10 @@ class PairsDataset(torch.utils.data.Dataset):
                 counter += 1
                 yield piece_pair
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.neighbors_index) + len(self.negative_pairs)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         if idx < len(self.neighbors_index):
             row = self.neighbors_index.iloc[idx]
             piece1 = row[0]
@@ -122,7 +122,9 @@ class BatchCollator:
         self.padding = padding
         self.len_divisor = len_divisor
 
-    def __call__(self, batch):
+    def __call__(
+        self, batch: list[tuple[np.ndarray, np.ndarray, np.ndarray | None]]
+    ) -> tuple[tuple[np.ndarray, np.ndarray], np.ndarray]:
         pieces1, pieces2, matrices = zip(*batch)
         return self._prepare_batch_data(pieces1, pieces2, matrices)
 
@@ -151,14 +153,19 @@ class BatchCollator:
         # tensor = tensor.zeros_like(tensor)
         return tensor, torch.tensor(data_size - 2 * self.padding)
 
-    def _get_max_piece_size(self, pieces):
+    def _get_max_piece_size(self, pieces: list[np.ndarray]) -> int:
         max_size = max([piece.shape[0] for piece in pieces])
         max_size = max_size + 2 * self.padding
         if max_size % self.len_divisor != 0:
             max_size = math.ceil(max_size / self.len_divisor) * self.len_divisor
-        return max_size
+        return max_size  # type: ignore
 
-    def _prepare_batch_data(self, pieces1, pieces2, matrices):
+    def _prepare_batch_data(
+        self,
+        pieces1: Sequence[np.ndarray],
+        pieces2: Sequence[np.ndarray],
+        matrices: Sequence[np.ndarray | None],
+    ) -> tuple[tuple[np.ndarray, np.ndarray], np.ndarray]:
         max_piece_size = self._get_max_piece_size(pieces1 + pieces2)
 
         pieces1, sizes1 = zip(
@@ -176,7 +183,9 @@ class BatchCollator:
         pieces2 = torch.stack(pieces2)
         sizes2 = torch.stack(sizes2)
 
-        def prepare_matrix(matrix, size1, size2, max_piece_size):
+        def prepare_matrix(
+            matrix: np.ndarray | None, size1: int, size2: int, max_piece_size: int
+        ) -> torch.Tensor:
             if matrix is None:
                 matrix = torch.zeros((size1, size2), dtype=torch.float32)
             else:
@@ -220,5 +229,5 @@ def get_img_patches_from_piece(piece: Piece, window_size: int) -> np.ndarray:
 
 def get_img_patches(contour: Points, img: np.ndarray, window_size: int) -> np.ndarray:
     patches = img_to_patches(contour, img, window_size)
-    patches = np.array(patches)
-    return patches.reshape((patches.shape[0], -1))
+    patches_array = np.array(patches)
+    return patches_array.reshape((patches_array.shape[0], -1))
