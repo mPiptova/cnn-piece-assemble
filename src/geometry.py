@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import cv2
 import numpy as np
 from scipy.spatial import KDTree
 
@@ -241,6 +242,41 @@ def fit_transform(points1: Points, points2: Points) -> Transformation:
 
     angle = np.arctan2(-rot_matrix[0, 1], rot_matrix[0, 0])
     return Transformation(angle, translation)
+
+
+def draw_line_polar(
+    image: np.ndarray, line: tuple[float, float], thickness: int = 1
+) -> None:
+    """
+    Draw a line defined in polar coordinates on the given image.
+
+    Parameters
+    ----------
+    image
+        Image to draw on
+    line
+        Tuple (rho, theta) of polar coordinates
+    thickness
+        Thickness of the line
+    """
+    rho, theta = line
+
+    max_distance = 2 * max(image.shape)
+
+    # Convert polar coordinates to Cartesian coordinates
+    a = np.cos(theta)
+    b = np.sin(theta)
+    x0 = a * rho
+    y0 = b * rho
+
+    # Calculate the endpoints of the line
+    x1 = int(x0 + max_distance * (-b))
+    y1 = int(y0 + max_distance * (a))
+    x2 = int(x0 - max_distance * (-b))
+    y2 = int(y0 - max_distance * (a))
+
+    # Draw the line on the image
+    cv2.line(image, (x1, y1), (x2, y2), 1, thickness)
 
 
 def icp(
