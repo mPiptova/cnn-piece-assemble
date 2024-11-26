@@ -14,12 +14,12 @@ from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.transform import rotate
 
-from geometry import get_common_contour_idxs, icp
+from geometry import Transformation, get_common_contour_idxs, icp
 from piece_assemble.neighbors import get_border_complexity
 from piece_assemble.visualization import draw_contour
 
 if TYPE_CHECKING:
-    from geometry import Transformation
+
     from piece_assemble.neighbors import NeighborClassifierBase
     from piece_assemble.piece import TransformedPiece
     from piece_assemble.types import Points
