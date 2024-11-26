@@ -14,7 +14,8 @@ from piece_assemble.cluster import ClusterScorer
 from piece_assemble.clustering import Clustering
 from piece_assemble.config import load_config
 from piece_assemble.descriptor import MultiOsculatingCircleDescriptor
-from piece_assemble.piece import Piece, load_images
+from piece_assemble.load import load_images
+from piece_assemble.piece import Piece
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Piece assemble.")
