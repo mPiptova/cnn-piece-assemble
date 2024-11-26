@@ -102,7 +102,7 @@ def get_border_complexity(
     if len(idxs) == 0 or piece is None:
         return 0
 
-    segment_count = piece.descriptor.get_complexity(idxs)
+    segment_count = piece.features.get_complexity(idxs)
     winding_angle = get_curve_winding_angle(piece.contour[idxs])
 
     return segment_count * winding_angle  # type: ignore

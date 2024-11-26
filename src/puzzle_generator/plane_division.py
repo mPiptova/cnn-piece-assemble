@@ -5,7 +5,7 @@ from skimage.segmentation import flood_fill
 from skimage.transform import rotate
 
 from geometry import Transformation
-from piece_assemble.descriptor import DummyDescriptorExtractor
+from piece_assemble.feature_extraction.dummy import DummyFeatureExtractor
 from piece_assemble.piece import Piece, TransformedPiece
 from puzzle_generator.lines import (
     draw_curve,
@@ -331,7 +331,7 @@ def apply_division_to_image(
             )
         )
 
-        piece = Piece.from_image(name, piece_img, mask, DummyDescriptorExtractor(), 0)
+        piece = Piece.from_image(name, piece_img, mask, DummyFeatureExtractor(), 0)
         transformed_piece = TransformedPiece(piece, transformation.inverse())
         pieces.append(transformed_piece)
 

@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING
 
 from geometry import Transformation
 from image import load_bin_img, load_img
-from piece_assemble.descriptor import DescriptorExtractor, DummyDescriptorExtractor
+from piece_assemble.feature_extraction.dummy import DummyFeatureExtractor
 from piece_assemble.piece import Piece, TransformedPiece
 
 if TYPE_CHECKING:
+    from piece_assemble.feature_extraction.base import FeatureExtractor
     from piece_assemble.types import BinImg, NpImage
 
 
@@ -53,7 +54,7 @@ def load_images(
 
 
 def load_pieces(
-    path: str, descriptor: DescriptorExtractor | None = None
+    path: str, feature_extractor: FeatureExtractor | None = None
 ) -> dict[str, Piece]:
     """
     Load pieces from the given directory.
@@ -68,13 +69,15 @@ def load_pieces(
     pieces
         A dictionary of Piece objects.
     """
-    if descriptor is None:
-        descriptor = DummyDescriptorExtractor()
+    if feature_extractor is None:
+        feature_extractor = DummyFeatureExtractor()
 
     img_ids, imgs, masks = load_images(path)
 
     return {
-        img_ids[i]: Piece.from_image(img_ids[i], imgs[i], masks[i], descriptor, 0)
+        img_ids[i]: Piece.from_image(
+            img_ids[i], imgs[i], masks[i], feature_extractor, 0
+        )
         for i in range(len(img_ids))
     }
 

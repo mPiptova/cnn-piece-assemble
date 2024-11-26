@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from itertools import combinations
 from multiprocessing import Pool
 from typing import TYPE_CHECKING
 
 import numpy as np
-import torch
 from more_itertools import flatten
 from tqdm import tqdm
 
 from geometry import extend_interval, extend_intervals, interval_difference, points_dist
 from piece_assemble.contours import get_osculating_circles, get_validity_intervals
-from piece_assemble.dataset import BatchCollator, get_img_patches, preprocess_piece_data
+from piece_assemble.feature_extraction.base import FeatureExtractor, Features
 from piece_assemble.matching.match import Match
-from piece_assemble.models import PairNetwork
-from piece_assemble.models.predict import (
-    embeddings_to_correspondence_matrix,
-    model_output_to_match,
-)
 from piece_assemble.segment import ApproximatingArc
 
 if TYPE_CHECKING:
@@ -27,11 +20,7 @@ if TYPE_CHECKING:
     from piece_assemble.types import NpImage, Point, Points
 
 
-class Descriptor(ABC):
-    pass
-
-
-class SegmentDescriptor(Descriptor):
+class SegmentFeatures(Features):
     def __init__(
         self,
         segments: list[Segment],
@@ -72,113 +61,45 @@ class SegmentDescriptor(Descriptor):
     def get_complexity(self, idxs: np.ndarray) -> float:
         return self.get_segment_count(idxs)
 
-
-class EmbeddingDescriptor(Descriptor):
-    def __init__(self, emb1: np.ndarray, emb2: np.ndarray):
-        super().__init__()
-        self.emb1 = emb1
-        self.emb2 = emb2
-
-    def get_complexity(self, idxs: np.ndarray) -> float:
-        return 1
-
-
-class DummyDescriptor(Descriptor):
-    def __init__(self):
-        super().__init__()
-        pass
-
-    def get_complexity(self, idxs: np.ndarray) -> float:
-        return 1
-
-
-class DescriptorExtractor(ABC):
-    @abstractmethod
-    def extract(self, contour: Points, image: NpImage) -> Descriptor:
-        return NotImplemented
-
-    def dist(self, first: Piece, second: Piece) -> np.ndarray:
-        return NotImplemented
-
-    def find_all_matches(
-        self,
-        pieces: list[Piece],
-    ) -> list[Match]:
-        return NotImplemented
-
-
-class DummyDescriptorExtractor(DescriptorExtractor):
-    def extract(self, contour: Points, image: NpImage) -> Descriptor:
-        return DummyDescriptor()
-
-    def dist(self, first: Piece, second: Piece) -> np.ndarray:
-        return np.zeros((0, 0))
-
-    def find_all_matches(
-        self,
-        pieces: list[Piece],
-    ) -> list[Match]:
-        return []
-
-
-class EmbeddingExtractor(DescriptorExtractor):
-    def __init__(
-        self, model: PairNetwork, patch_size: int = 7, activation_threshold: float = 0.8
-    ):
-        self.model = model
-        self.collator = BatchCollator(model.padding)
-        self.activation_threshold = activation_threshold
-        self.patch_size = patch_size
-
-    def extract(self, contour: Points, image: NpImage) -> EmbeddingDescriptor:
-        data = get_img_patches(contour, image, self.patch_size)
-        data = preprocess_piece_data(data)
-        input, _ = self.collator([(data, data, None)])
-        device = next(self.model.parameters()).device
-        input = (input[0].to(device), input[1].to(device))
-
-        self.model.eval()
-        with torch.no_grad():
-            e_first = (
-                self.model.embedding_network1(input[0])
-                .detach()
-                .cpu()
-                .numpy()[0][:, : data.shape[0]]
+    def get_segment_lengths(self) -> np.ndarray:
+        def arc_len(arc: ApproximatingArc) -> int:
+            extended_interval = extend_interval(
+                arc.interval, len(self.contour_segment_idxs)
             )
-            e_second = (
-                self.model.embedding_network2(input[1])
-                .detach()
-                .cpu()
-                .numpy()[0][:, : data.shape[0]]
-            )
+            return int(extended_interval[1] - extended_interval[0])
 
-        return EmbeddingDescriptor(e_first, e_second)
+        return np.array([arc_len(arc) for arc in self.segments])
 
-    def dist(self, first: Piece, second: Piece) -> np.ndarray:
-        return 1 - embeddings_to_correspondence_matrix(
-            first.descriptor.emb1, second.descriptor.emb2
-        )
+    def filter_small_arcs(self, min_size: float, min_angle: float) -> None:
+        """Filter out circle arcs which are too small.
 
-    def find_all_matches(
-        self,
-        pieces: list[Piece],
-    ) -> list[Match]:
-        all_pairs = [(x, y) for x, y in list(combinations(pieces, 2))]
-        matches = []
+        Parameters
+        ----------
+        min_size
+            Circle arcs with size larger than this number won't be filtered out.
+        min_angle
+            Circle arcs with the size smaller than `min_size`, but angle larger than
+            `min_angle` won't be filtered out.
+            The angle is given in radians.
+        """
 
-        for piece1, piece2 in tqdm(all_pairs, desc="Finding matches"):
-            output = embeddings_to_correspondence_matrix(
-                piece1.descriptor.emb1, piece2.descriptor.emb2
-            )
-            match = model_output_to_match(
-                piece1, piece2, output, self.activation_threshold
-            )
-            if match is not None:
-                matches.append(match)
-        return matches
+        def is_large_enough(arc: ApproximatingArc) -> bool:
+            length = len(arc)
+            if length > min_size:
+                return True
+            return length >= np.abs(arc.radius) * min_angle  # type: ignore
+
+        large_arc_idxs = [
+            idx for idx, arc in enumerate(self.segments) if is_large_enough(arc)
+        ]
+        if len(large_arc_idxs) == len(self.segments):
+            return
+
+        self.segments = [self.segments[idx] for idx in large_arc_idxs]
+        self.features = self.features[large_arc_idxs]
 
 
-class OsculatingCircleDescriptor(DescriptorExtractor):
+class OsculatingCircleFeatureExtractor(FeatureExtractor):
     def __init__(
         self,
         n_points: int = 5,
@@ -206,15 +127,15 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         self.color_var_w = color_var_w
         self.spatial_dist_thr = 1000
 
-    def extract(self, contour: Points, image: NpImage) -> Descriptor:
+    def extract(self, contour: Points, image: NpImage) -> Features:
         radii, centers = get_osculating_circles(contour)
         segments = approximate_curve_by_circles(contour, radii, centers, self.tol_dist)
         segments = [
             segment for segment in segments if len(segment) >= self.min_segment_len
         ]
 
-        descriptor = np.array(
-            [self.segment_descriptor(segment, image) for segment in segments]
+        features = np.array(
+            [self.segment_features(segment, image) for segment in segments]
         )
 
         contour_segment_idxs = np.full(len(contour), -1)
@@ -225,7 +146,7 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
                 contour_segment_idxs[segment.interval[0] :] = i
                 contour_segment_idxs[: segment.interval[1]] = i
 
-        return SegmentDescriptor(segments, descriptor, contour_segment_idxs)
+        return SegmentFeatures(segments, features, contour_segment_idxs)
 
     def _get_points(self, segment: Segment, n_points: int) -> list[Point]:
         p_start = segment.contour[0]
@@ -240,7 +161,7 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
 
         return points
 
-    def segment_descriptor(
+    def segment_features(
         self, segment: Segment, piece_img: NpImage
     ) -> np.ndarray[float]:
         """Get descriptor of given curve segment.
@@ -311,7 +232,7 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
             )
             for ch in range(self.channels)
         ]
-        var = np.max(vars, axis=0)
+        var: float = np.max(vars, axis=0)
         return var
 
     def spatial_dist(self, first: np.ndarray, second: np.ndarray) -> np.ndarray:
@@ -328,25 +249,29 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         return dist
 
     def dist(self, piece1: Piece, piece2: Piece) -> np.ndarray:
-        color_dist = self.color_dist(
-            piece1.descriptor.features, piece2.descriptor.features
-        )
+        if (
+            type(piece1.features) != SegmentFeatures
+            or type(piece2.features) != SegmentFeatures
+        ):
+            raise ValueError("Features must be of type SegmentFeatures")
+
+        color_dist = self.color_dist(piece1.features.features, piece2.features.features)
         spatial_dist = self.spatial_dist(
-            piece1.descriptor.features, piece2.descriptor.features
+            piece1.features.features, piece2.features.features
         )
         min_var = np.minimum(
-            self.color_var(piece1.descriptor.features)[:, np.newaxis],
-            self.color_var(piece2.descriptor.features)[np.newaxis, :],
+            self.color_var(piece1.features.features)[:, np.newaxis],
+            self.color_var(piece2.features.features)[np.newaxis, :],
         )
 
-        len1 = piece1.get_segment_lengths()
-        len2 = piece2.get_segment_lengths()
+        len1 = piece1.features.get_segment_lengths()
+        len2 = piece2.features.get_segment_lengths()
         max_len = np.maximum(len1[:, np.newaxis], len2[np.newaxis, :])
         min_len = np.minimum(len1[:, np.newaxis], len2[np.newaxis, :])
         rel_len_diff = (max_len - min_len) / max_len
 
-        radii1 = np.array([segment.radius for segment in piece1.descriptor.segments])
-        radii2 = np.array([segment.radius for segment in piece2.descriptor.segments])
+        radii1 = np.array([segment.radius for segment in piece1.features.segments])
+        radii2 = np.array([segment.radius for segment in piece2.features.segments])
         angles1 = len1 / (2 * np.pi * radii1)
         angles2 = len2 / (2 * np.pi * radii2)
 
@@ -367,6 +292,12 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         piece1: Piece,
         piece2: Piece,
     ) -> list[Match]:
+        if (
+            type(piece1.features) != SegmentFeatures
+            or type(piece2.features) != SegmentFeatures
+        ):
+            raise ValueError("Features must be of type SegmentFeatures")
+
         desc_dist = self.dist(piece1, piece2)
 
         flat_dist = desc_dist.flatten()
@@ -377,23 +308,23 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
                 dist=desc_dist[i, j],
                 piece1=piece1,
                 piece2=piece2,
-                idxs1=np.array(piece1.descriptor.segments[i].interval),
-                idxs2=np.array(piece2.descriptor.segments[j].interval)[::-1],
+                idxs1=np.array(piece1.features.segments[i].interval),
+                idxs2=np.array(piece2.features.segments[j].interval)[::-1],
             )
             for i, j in zip(idxs1, idxs2)
             if not np.isinf(desc_dist[i, j])
         ]
 
-    def find_all_matches(self, pieces: list[Piece]):
-        matches = [
+    def find_all_matches(self, pieces: list[Piece]) -> list[Match]:
+        matches_nested = [
             self.find_matches(piece1, piece2)[:50]
             for piece1, piece2 in combinations(pieces, 2)
         ]
-        matches = list(flatten(matches))
+        matches: list[Match] = list(flatten(matches_nested))
         matches.sort(key=lambda match: match.dist)
         return matches
 
-    def _filter_initial(self, pair_matches: list[Match]):
+    def _filter_initial(self, pair_matches: list[Match]) -> list[Match]:
         return [match for match in pair_matches if match.is_initial_transform_valid()]
 
     def find_all_matches_with_preprocessing(
@@ -401,22 +332,24 @@ class OsculatingCircleDescriptor(DescriptorExtractor):
         pieces: list[Piece],
         n_processes: int = 4,
     ) -> list[Match]:
-        matches = [
+        matches_nested = [
             self.find_matches(piece1, piece2)[:50]
             for piece1, piece2 in combinations(pieces, 2)
         ]
         with Pool(n_processes) as p:
-            matches = p.map(
+            matches_filtered = p.map(
                 self._filter_initial,
-                tqdm(matches, "Filtering matches based on initial transformation"),
+                tqdm(
+                    matches_nested, "Filtering matches based on initial transformation"
+                ),
             )
 
-        matches = list(flatten(matches))
+        matches: list[Match] = list(flatten(matches_filtered))
         matches.sort(key=lambda match: match.dist)
         return matches
 
 
-class MultiOsculatingCircleDescriptor(OsculatingCircleDescriptor):
+class MultiOsculatingCircleFeatureExtractor(OsculatingCircleFeatureExtractor):
     def __init__(
         self,
         n_points: int = 5,
@@ -444,9 +377,7 @@ class MultiOsculatingCircleDescriptor(OsculatingCircleDescriptor):
         self.color_var_w = color_var_w
         self.spatial_dist_thr = 1000
 
-    def extract(
-        self, contour: Points, image: NpImage
-    ) -> tuple[list[Segment], np.ndarray]:
+    def extract(self, contour: Points, image: NpImage) -> SegmentFeatures:
         radii, centers = get_osculating_circles(contour)
         segments = list(
             flatten(
@@ -461,7 +392,7 @@ class MultiOsculatingCircleDescriptor(OsculatingCircleDescriptor):
         ]
 
         descriptor = np.array(
-            [self.segment_descriptor(segment, image) for segment in segments]
+            [self.segment_features(segment, image) for segment in segments]
         )
 
         contour_segment_idxs = np.full(len(contour), -1)
@@ -472,7 +403,7 @@ class MultiOsculatingCircleDescriptor(OsculatingCircleDescriptor):
                 contour_segment_idxs[segment.interval[0] :] = i
                 contour_segment_idxs[: segment.interval[1]] = i
 
-        return SegmentDescriptor(segments, descriptor, contour_segment_idxs)
+        return SegmentFeatures(segments, descriptor, contour_segment_idxs)
 
 
 def approximate_curve_by_circles(

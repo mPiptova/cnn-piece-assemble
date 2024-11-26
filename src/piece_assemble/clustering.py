@@ -17,7 +17,7 @@ from piece_assemble.cluster import Cluster
 
 if TYPE_CHECKING:
     from piece_assemble.cluster import ClusterScorer
-    from piece_assemble.descriptor import DescriptorExtractor
+    from piece_assemble.feature_extraction.base import FeatureExtractor
     from piece_assemble.matching.match import CompactMatch, Match
     from piece_assemble.piece import Piece
 
@@ -54,11 +54,11 @@ class Clustering:
     def __init__(
         self,
         pieces: list[Piece],
-        descriptor_extractor: DescriptorExtractor,
+        feature_extractor: FeatureExtractor,
         cluster_scorer: ClusterScorer,
     ) -> None:
         self.pieces = pieces
-        self.descriptor_extractor = descriptor_extractor
+        self.feature_extractor = feature_extractor
         self.cluster_scorer = cluster_scorer
         self.all_ids = [piece.name for piece in pieces]
 
@@ -104,7 +104,7 @@ class Clustering:
             pass
 
     def find_candidate_matches(self, n_matches: int = 40000) -> None:
-        self.all_matches = self.descriptor_extractor.find_all_matches(self.pieces)[
+        self.all_matches = self.feature_extractor.find_all_matches(self.pieces)[
             :n_matches
         ]
 
@@ -770,7 +770,7 @@ def cluster_can_be_trusted(
         True if the cluster can be trusted, False otherwise.
 
     """
-    return (
+    return (  # type: ignore
         cluster.complexity > complexity_threshold * (len(cluster.piece_ids) - 1)
         and cluster.dist < dist_threshold
         and cluster.color_dist < color_threshold

@@ -13,7 +13,9 @@ from multiprocessing import Pool
 from piece_assemble.cluster import ClusterScorer
 from piece_assemble.clustering import Clustering
 from piece_assemble.config import load_config
-from piece_assemble.descriptor import MultiOsculatingCircleDescriptor
+from piece_assemble.feature_extraction.segment import (
+    MultiOsculatingCircleFeatureExtractor,
+)
 from piece_assemble.load import load_images
 from piece_assemble.piece import Piece
 
@@ -27,7 +29,7 @@ if __name__ == "__main__":
 
     img_ids, imgs, masks = load_images(config["img_path"], config["piece"]["scale"])
 
-    descriptor_extractor = MultiOsculatingCircleDescriptor(**config["descriptor"])
+    descriptor_extractor = MultiOsculatingCircleFeatureExtractor(**config["descriptor"])
 
     with Pool(config["clustering"]["n_processes"]) as p:
         pieces = p.starmap(
