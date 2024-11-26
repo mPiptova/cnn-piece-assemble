@@ -331,7 +331,7 @@ class Clustering:
             return new_pair_clusters
 
     def process_new_cluster(self, new_cluster, trusted_cluster_config, min_complexity):
-        if type(min_complexity) is int:
+        if type(min_complexity) in (int, float):
             min_complexity = [min_complexity, min_complexity]
         if new_cluster.complexity < min_complexity[1]:
             return
