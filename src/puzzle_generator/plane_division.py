@@ -262,6 +262,46 @@ def get_puzzle_division(
     return division
 
 
+def crop_piece_img(
+    piece_img: np.ndarray, mask: np.ndarray, transformation: Transformation
+) -> tuple[np.ndarray, np.ndarray, Transformation]:
+    """Crop the piece image to remove padding.
+
+    Also corresponding transformation is updated.
+
+    Parameters
+    ----------
+    piece_img
+        The piece image to crop.
+    mask
+        The mask of the piece image.
+    transformation
+        The transformation which was applied to the original position of this piece
+        within the puzzle to to get this piece image.
+
+    Returns
+    -------
+    A tuple containing the cropped piece image, mask and updated transformation.
+    """
+    foreground_idxs = np.where(mask)[:2]
+    padding = (
+        *np.min(foreground_idxs, axis=1),
+        *np.max(foreground_idxs, axis=1) + 1,
+    )
+    piece_img = piece_img[padding[0] : padding[2], padding[1] : padding[3]]
+    mask = mask[padding[0] : padding[2], padding[1] : padding[3]]
+
+    piece_img[~mask] = 1
+
+    transformation = transformation.compose(
+        Transformation(
+            0,
+            np.array([-padding[0], -padding[1]]),
+        )
+    )
+    return piece_img, mask, transformation
+
+
 def apply_division_to_image(
     img: np.ndarray, division: np.ndarray
 ) -> list[TransformedPiece]:
@@ -312,23 +352,8 @@ def apply_division_to_image(
             )
         )
 
-        # Crop image so it doesn't contain the padding
-        foreground_idxs = np.where(mask)[:2]
-        padding = (
-            *np.min(foreground_idxs, axis=1),
-            *np.max(foreground_idxs, axis=1) + 1,
-        )
-        piece_img = piece_img[padding[0] : padding[2], padding[1] : padding[3]]
-        mask = mask[padding[0] : padding[2], padding[1] : padding[3]]
-
-        piece_img[~mask] = 1
-
-        # Again, cropping is just translation
-        transformation = transformation.compose(
-            Transformation(
-                0,
-                np.array([-padding[0], -padding[1]]),
-            )
+        piece_img, mask, transformation = crop_piece_img(
+            piece_img, mask, transformation
         )
 
         piece = Piece.from_image(name, piece_img, mask, DummyFeatureExtractor(), 0)
