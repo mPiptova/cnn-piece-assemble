@@ -206,7 +206,9 @@ def interval_difference(
     return interval1
 
 
-def fit_transform(points1: Points, points2: Points) -> Transformation:
+def fit_transform(
+    points1: Points, points2: Points, use_ransac: bool = False
+) -> Transformation:
     """Find transformation which transforms one set of point into another.
 
     This transformation includes only rotation and translation, not scaling or shearing.
@@ -224,6 +226,15 @@ def fit_transform(points1: Points, points2: Points) -> Transformation:
     """
     b = points2.flatten()
     a = np.vstack([[[p[0], -p[1], 1, 0], [p[1], p[0], 0, 1]] for p in points1])
+
+    if use_ransac:
+        from skimage.measure import ransac
+        from skimage.transform import EuclideanTransform
+
+        model, _ = ransac((points1, points2), EuclideanTransform, 2, 5)
+
+        if not np.isnan(model.rotation):
+            return Transformation(-model.rotation, model.translation)
 
     x = np.linalg.lstsq(a, b, rcond=None)[0]
 
