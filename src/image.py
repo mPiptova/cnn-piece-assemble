@@ -35,7 +35,7 @@ def np_to_pil(img: NpImage) -> PilImage:
     return Image.fromarray((img * 255).astype(np.uint8))
 
 
-def load_bin_img(img_path: str, scale: float = 1, padding: int = 1) -> BinImg:
+def load_bin_img(img_path: str, scale: float = 1, padding: int = 0) -> BinImg:
     """Load image as a binary array.
 
     Parameters
@@ -55,7 +55,7 @@ def load_bin_img(img_path: str, scale: float = 1, padding: int = 1) -> BinImg:
     return np.pad(img_np, padding, mode="constant", constant_values=0)
 
 
-def load_img(img_path: str, scale: float = 1, padding: int = 1) -> NpImage:
+def load_img(img_path: str, scale: float = 1, padding: int = 0) -> NpImage:
     """Load image as numpy image.
 
     Parameters
