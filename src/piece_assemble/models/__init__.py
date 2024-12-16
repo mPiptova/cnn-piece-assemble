@@ -193,6 +193,8 @@ class PairNetwork(nn.Module):
         self,
         embedding_dim: int,
         kernel_size: int,
+        window_size: int = 7,
+        background_val: float = 1,
         depth: int = 3,
         batch_normalization: bool = True,
         dropout_rate: float = 0,
@@ -215,6 +217,9 @@ class PairNetwork(nn.Module):
             Dropout rate during the training.
         """
         super().__init__()
+
+        self.window_size = window_size
+        self.background_val = background_val
 
         self.embedding_network1 = EmbeddingUnet(
             147,
@@ -307,7 +312,6 @@ def load_model(
 
     """
     config = load_model_config(model_id, path)
-
     checkpoint_path = os.path.join(path, f"{model_id}_{checkpoint_version}")
 
     model = PairNetwork(**config["model"])

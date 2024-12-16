@@ -17,7 +17,7 @@ from piece_assemble.segment import ApproximatingArc
 if TYPE_CHECKING:
     from piece_assemble.piece import Piece
     from piece_assemble.segment import Segment
-    from piece_assemble.types import NpImage, Point, Points
+    from piece_assemble.types import BinImg, NpImage, Point, Points
 
 
 class SegmentFeatures(Features):
@@ -147,6 +147,11 @@ class OsculatingCircleFeatureExtractor(FeatureExtractor):
                 contour_segment_idxs[: segment.interval[1]] = i
 
         return SegmentFeatures(segments, features, contour_segment_idxs)
+
+    def prepare_image(
+        self, image: NpImage, mask: BinImg, blur_image: NpImage
+    ) -> NpImage:
+        return blur_image
 
     def _get_points(self, segment: Segment, n_points: int) -> list[Point]:
         p_start = segment.contour[0]

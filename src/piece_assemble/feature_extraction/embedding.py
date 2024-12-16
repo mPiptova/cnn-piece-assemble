@@ -8,6 +8,7 @@ import torch
 from tqdm import tqdm
 
 from piece_assemble.dataset import BatchCollator, get_img_patches, preprocess_piece_data
+from piece_assemble.feature_extraction.base import FeatureExtractor, Features
 from piece_assemble.matching.match import Match
 from piece_assemble.models import PairNetwork
 from piece_assemble.models.predict import (
@@ -16,9 +17,8 @@ from piece_assemble.models.predict import (
 )
 
 if TYPE_CHECKING:
-    from piece_assemble.feature_extraction.base import FeatureExtractor, Features
     from piece_assemble.piece import Piece
-    from piece_assemble.types import NpImage, Points
+    from piece_assemble.types import BinImg, NpImage, Points
 
 
 class EmbeddingFeatures(Features):
@@ -73,6 +73,13 @@ class EmbeddingExtractor(FeatureExtractor):
         return 1 - embeddings_to_correspondence_matrix(
             first.features.emb1, second.features.emb2
         )
+
+    def prepare_image(
+        self, image: NpImage, mask: BinImg, blur_image: NpImage
+    ) -> NpImage:
+        image = image.copy()
+        image[~mask] = self.model.background_val
+        return image
 
     def find_all_matches(
         self,

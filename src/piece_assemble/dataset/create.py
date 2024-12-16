@@ -67,7 +67,10 @@ def rename_pieces(
 
 
 def create_dataset(
-    puzzle_dirs: list[str], target_dir: str, window_size: int = 7
+    puzzle_dirs: list[str],
+    target_dir: str,
+    window_size: int = 7,
+    background_val: float = 1,
 ) -> None:
     """
     Create and store dataset from the given puzzle directories.
@@ -93,7 +96,7 @@ def create_dataset(
 
     offset = 0
     for i, puzzle_dir in tqdm(enumerate(puzzle_dirs)):
-        pieces, neighbors = load_puzzle(puzzle_dir)
+        pieces, neighbors = load_puzzle(puzzle_dir, background_val)
         pieces, neighbors = rename_pieces(pieces, neighbors, offset)
         offset += len(pieces)
 
@@ -188,10 +191,13 @@ if __name__ == "__main__":
     parser.add_argument("target_dir", type=str)
     parser.add_argument("puzzle_dirs", type=str, nargs="+")
     parser.add_argument("--window-size", type=int, default=7)
+    parser.add_argument("--background-val", type=float, default=1)
     args = parser.parse_args()
 
     # Create dataset dir if it doesn't exist
     if not os.path.exists(args.target_dir):
         os.makedirs(args.target_dir)
 
-    create_dataset(args.puzzle_dirs, args.target_dir, args.window_size)
+    create_dataset(
+        args.puzzle_dirs, args.target_dir, args.window_size, args.background_val
+    )

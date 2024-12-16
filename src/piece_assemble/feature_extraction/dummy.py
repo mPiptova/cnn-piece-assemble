@@ -9,7 +9,7 @@ from piece_assemble.feature_extraction.base import FeatureExtractor, Features
 if TYPE_CHECKING:
     from piece_assemble.matching.match import Match
     from piece_assemble.piece import Piece
-    from piece_assemble.types import NpImage, Points
+    from piece_assemble.types import BinImg, NpImage, Points
 
 
 class DummyDescriptor(Features):
@@ -22,6 +22,9 @@ class DummyDescriptor(Features):
 
 
 class DummyFeatureExtractor(FeatureExtractor):
+    def __init__(self, background_val: float = 1):
+        self.background_val = background_val
+
     def extract(self, contour: Points, image: NpImage) -> Features:
         return DummyDescriptor()
 
@@ -33,3 +36,10 @@ class DummyFeatureExtractor(FeatureExtractor):
         pieces: list[Piece],
     ) -> list[Match]:
         return []
+
+    def prepare_image(
+        self, image: NpImage, mask: BinImg, blur_image: NpImage
+    ) -> NpImage:
+        image = image.copy()
+        image[~mask] = self.background_val
+        return image

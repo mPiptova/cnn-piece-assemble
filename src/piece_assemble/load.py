@@ -53,9 +53,7 @@ def load_images(
     return img_ids, imgs, masks
 
 
-def load_pieces(
-    path: str, feature_extractor: FeatureExtractor | None = None
-) -> dict[str, Piece]:
+def load_pieces(path: str, feature_extractor: FeatureExtractor) -> dict[str, Piece]:
     """
     Load pieces from the given directory.
 
@@ -69,9 +67,6 @@ def load_pieces(
     pieces
         A dictionary of Piece objects.
     """
-    if feature_extractor is None:
-        feature_extractor = DummyFeatureExtractor()
-
     img_ids, imgs, masks = load_images(path)
 
     return {
@@ -82,7 +77,9 @@ def load_pieces(
     }
 
 
-def load_puzzle(path: str) -> tuple[dict[str, TransformedPiece], list[list[str]]]:
+def load_puzzle(
+    path: str, background_val: float = 1
+) -> tuple[dict[str, TransformedPiece], list[list[str]]]:
     """
     Load puzzle from the given directory.
 
@@ -101,7 +98,7 @@ def load_puzzle(path: str) -> tuple[dict[str, TransformedPiece], list[list[str]]
     neighbors
         A list of lists of neighbor piece names.
     """
-    pieces = load_pieces(path)
+    pieces = load_pieces(path, DummyFeatureExtractor(background_val))
 
     with open(os.path.join(path, "pieces.json"), "r") as f:
         pieces_json = json.load(f)

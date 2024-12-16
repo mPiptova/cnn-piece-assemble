@@ -78,9 +78,9 @@ class Piece:
         -------
         A Piece object.
         """
-
+        mask = mask.astype(bool)
         # For averaging, use eroded mask for better behavior near contours
-        mask_eroded = erosion(mask.astype(bool), diamond(1))
+        mask_eroded = erosion(mask, diamond(1))
         footprint = disk(img_mean_window_r)
         img_int = (img * 255).astype("uint8")
         img_avg = img
@@ -109,7 +109,9 @@ class Piece:
         contour = smooth_contours(outline_contour, sigma)
         holes = [smooth_contours(hole, sigma) for hole in holes if len(hole) > 100]
 
-        features = feature_extractor.extract(contour, img_avg)
+        features = feature_extractor.extract(
+            contour, feature_extractor.prepare_image(img, mask, img_avg)
+        )
 
         polygon = cls._get_polygon_approximation(
             polygon_approximation_tolerance, contour, holes
