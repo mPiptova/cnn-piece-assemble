@@ -61,7 +61,6 @@ def get_curve_winding_angle(curve: Points) -> float:
     -------
     The total angle of turn of the curve.
     """
-    curve = smooth_contours(curve, 3, False)
     curve_diff = curve[:-1] - curve[1:]
 
     if len(curve_diff) == 0:
@@ -103,7 +102,9 @@ def get_border_complexity(
         return 0
 
     segment_count = piece.features.get_complexity(idxs)
-    winding_angle = get_curve_winding_angle(piece.contour[idxs])
+
+    contour = smooth_contours(piece.contour[idxs], border_dist_tol * 2, False)
+    winding_angle = get_curve_winding_angle(contour)
 
     return segment_count * winding_angle  # type: ignore
 
