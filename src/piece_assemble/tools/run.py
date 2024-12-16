@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     img_ids, imgs, masks = load_images(config["img_path"], config["piece"]["scale"])
 
-    descriptor_extractor = MultiOsculatingCircleFeatureExtractor(**config["descriptor"])
+    feature_extractor = MultiOsculatingCircleFeatureExtractor(**config["descriptor"])
 
     with Pool(config["clustering"]["n_processes"]) as p:
         pieces = p.starmap(
@@ -38,14 +38,14 @@ if __name__ == "__main__":
                 img_ids,
                 imgs,
                 masks,
-                [descriptor_extractor] * len(img_ids),
+                [feature_extractor] * len(img_ids),
                 [config["piece"]["sigma"]] * len(img_ids),
                 [config["piece"]["polygon_approximation_tolerance"]] * len(img_ids),
             ),
         )
 
     cluster_scorer = ClusterScorer(**config["cluster_scorer"])
-    clustering = Clustering(pieces, descriptor_extractor, cluster_scorer)
+    clustering = Clustering(pieces, feature_extractor, cluster_scorer)
 
     clustering.set_logging(**config["logging"])
     clustering(
