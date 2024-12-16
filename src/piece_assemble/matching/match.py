@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
 
+import numpy as np
 from shapely import transform
 
 from geometry import Transformation, fit_transform, icp
@@ -47,7 +48,7 @@ class Match:
         transformation
             Transformation which maps `piece1` to match `piece2`.
         """
-        return fit_transform(self.contour1[self.idxs1], self.contour2[self.idxs2])
+        return fit_transform(self.contour1[self.idxs1], self.contour2[self.idxs2], True)
 
     def _ios(self, transformation: Transformation) -> float:
         """Computes intersection over smaller of matched pieces.
@@ -94,6 +95,7 @@ class Match:
         ios_tol: float = 0.02,
         icp_max_iters: int = 30,
         icp_min_change: float = 0.5,
+        check_consistency: bool = False,
     ) -> CompactMatch | None:
         """Returns more precise Match or None if invalid.
 
@@ -130,6 +132,14 @@ class Match:
         # Check the intersection area again, this time with more strict threshold
         if self._ios(transformation) > ios_tol:
             return None
+
+        if check_consistency:
+            points1 = transformation.apply(self.contour1[self.idxs1])
+            points2 = self.contour2[self.idxs2]
+
+            matching = np.linalg.norm(points1 - points2, axis=1) < dist_tol
+            if not np.any(matching):
+                return None
 
         return CompactMatch(self.id1, self.id2, transformation)
 
