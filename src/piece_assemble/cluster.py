@@ -746,3 +746,29 @@ class Cluster:
         for neighbor_pair in self.get_neighbor_pairs():
             dict_repr["neighbors"].append(list(neighbor_pair))
         return dict_repr
+
+    @classmethod
+    def from_dict(
+        cls,
+        config: dict,
+        pieces: dict,
+        scorer: ClusterScorer,
+        self_intersection_tol: float,
+        border_dist_tol: float,
+        rotation_tol: float,
+        translation_tol: float,
+        neighbor_classifier: NeighborClassifierBase,
+    ) -> Cluster:
+        transformed_pieces = {
+            p["id"]: TransformedPiece.from_dict(p, pieces[p["id"]])
+            for p in config["transformed_pieces"]
+        }
+        return cls(
+            transformed_pieces,
+            scorer,
+            self_intersection_tol,
+            border_dist_tol,
+            rotation_tol,
+            translation_tol,
+            neighbor_classifier,
+        )
