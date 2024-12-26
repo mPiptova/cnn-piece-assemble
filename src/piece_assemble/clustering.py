@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 from image import np_to_pil
 from piece_assemble.cluster import Cluster
+from piece_assemble.cycles import TransformationGraph
 
 if TYPE_CHECKING:
     from piece_assemble.cluster import ClusterScorer
@@ -201,6 +202,7 @@ class Clustering:
         min_complexity: int,
         queue: Queue,
     ) -> None:
+        all_compact_matches = []
         for match in tqdm(self.all_matches, desc="Generating matches"):
             compact_match = match.verify(
                 self.cluster_config["border_dist_tol"],
@@ -208,7 +210,11 @@ class Clustering:
                 icp_min_change=icp_min_change,
             )
             if compact_match is not None:
+                all_compact_matches.append(compact_match)
                 queue.put(compact_match)
+
+        cycles = self.get_cycles(all_compact_matches)
+        self.update_trusted_clusters(cycles, lambda _: True)
 
         self._worker_count = 1
         self._workers_finished = 0
@@ -224,6 +230,19 @@ class Clustering:
                 min_complexity,
                 queue,
             )
+
+    def get_cycles(self, verified_matches: list[CompactMatch]) -> list[Cluster]:
+        graph = TransformationGraph.from_matches(verified_matches)
+        cycles = graph.find_consistent_cycles(3) + graph.find_consistent_cycles(4)
+        clusters = []
+        pieces_dict = {piece.name: piece for piece in self.pieces}
+        for cycle in cycles:
+            cluster = graph.cycle_to_cluster(
+                cycle, pieces_dict, self.cluster_scorer, self.cluster_config
+            )
+            if cluster is not None:
+                clusters.append(cluster)
+        return clusters
 
     def run_iteration(
         self,
@@ -612,26 +631,31 @@ class Clustering:
         other_clusters = []
         for cluster in clusters:
             used_trusted_clusters = []
-            if not trust_function(cluster):
-                other_clusters.append(cluster)
-                continue
             for trusted_cluster in self.trusted_clusters:
                 if cluster.piece_ids.issubset(trusted_cluster.piece_ids):
                     cluster = None
                     break
                 if cluster.piece_ids.isdisjoint(trusted_cluster.piece_ids):
                     continue
-                try:
-                    cluster = cluster.merge(trusted_cluster, try_fix=False)
-                    used_trusted_clusters.append(trusted_cluster)
-                except Exception:
-                    cluster = None
-                    break
+                if trust_function(cluster):
+                    try:
+                        cluster = cluster.merge(trusted_cluster, try_fix=False)
+                        used_trusted_clusters.append(trusted_cluster)
+                    except Exception:
+                        cluster = None
+                        break
 
-            if cluster is not None:
+            if cluster is None:
+                continue
+
+            if trust_function(cluster) or len(used_trusted_clusters) > 0:
                 self.trusted_clusters.append(cluster)
                 for trusted_cluster in used_trusted_clusters:
                     self.trusted_clusters.remove(trusted_cluster)
+
+            else:
+                other_clusters.append(cluster)
+
         return other_clusters
 
     def _check_new_clusters(self, clusters: list[Cluster]) -> list[Cluster]:
