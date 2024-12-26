@@ -14,7 +14,10 @@ if TYPE_CHECKING:
 
 
 def get_correspondence_matrix(
-    t_piece1: TransformedPiece, t_piece2: TransformedPiece, tol: int = 5
+    t_piece1: TransformedPiece,
+    t_piece2: TransformedPiece,
+    tol: int = 5,
+    dilation_size: int = 3,
 ) -> np.ndarray:
     idxs1_closest, idxs2 = get_common_contour_idxs(
         t_piece1.contour,
@@ -26,12 +29,33 @@ def get_correspondence_matrix(
         t_piece1.contour,
         tol,
     )
+    mask1 = np.isin(idxs2, idxs2_closest)
+    mask2 = np.isin(idxs1, idxs1_closest)
+
+    idxs1_closest = idxs1_closest[mask1]
+    idxs2 = idxs2[mask1]
+
+    idxs2_closest = idxs2_closest[mask2]
+    idxs1 = idxs1[mask2]
+
     similarity_matrix = np.zeros((len(t_piece1.contour), len(t_piece2.contour)))
 
     similarity_matrix[idxs1_closest, idxs2] = 1
     similarity_matrix[idxs1, idxs2_closest] = 1
 
-    similarity_matrix = dilation(similarity_matrix, np.ones((3, 3)))
+    dilation_mask = np.array(
+        [
+            [0, 0, 1],
+            [0, 0, 0],
+            [1, 0, 0],
+        ]
+    )
+    similarity_matrix = dilation(similarity_matrix, dilation_mask)
+
+    if dilation_size > 0:
+        similarity_matrix = dilation(
+            similarity_matrix, np.ones((dilation_size, dilation_size))
+        )
 
     return similarity_matrix
 
