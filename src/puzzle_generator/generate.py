@@ -42,6 +42,7 @@ from PIL import Image
 from image import np_to_pil, pil_to_np
 from piece_assemble.cluster import Cluster, DummyClusterScorer
 from piece_assemble.neighbors import BorderLengthNeighborClassifier
+from piece_assemble.piece import TransformedPiece
 from piece_assemble.types import NpImage
 from puzzle_generator.plane_division import (
     apply_division_to_image,
@@ -66,17 +67,23 @@ def generate_puzzle(
 
     piece_dict = {piece.name: piece for piece in pieces}
 
+    store_puzzle(piece_dict, output_dir, img)
+
+
+def store_puzzle(
+    pieces: dict[str, TransformedPiece], output_dir: str, original_image: NpImage
+) -> None:
     # Write original
-    np_to_pil(img).save(os.path.join(output_dir, "original.png"))
+    np_to_pil(original_image).save(os.path.join(output_dir, "original.png"))
 
     # Write images
-    for name, piece in piece_dict.items():
+    for name, piece in pieces.items():
         np_to_pil(piece.img).save(os.path.join(output_dir, f"{name}.png"))
         np_to_pil(piece.mask).save(os.path.join(output_dir, f"{name}_mask.png"))
 
     # Write cluster
     cluster = Cluster(
-        piece_dict,
+        pieces,
         DummyClusterScorer(),
         0,
         0,
