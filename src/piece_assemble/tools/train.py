@@ -15,19 +15,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Model training.")
     parser.add_argument("config", type=str, help="Path to the configuration file")
     parser.add_argument(
-        "checkpoint-path",
+        "checkpoint_path",
         type=str,
         help="Path to the directory where checkpoints are stored",
     )
     parser.add_argument(
-        "tensorboard-path",
+        "tensorboard_path",
         type=str,
         help="Path to the directory where checkpoints are stored",
     )
 
     args = parser.parse_args()
 
-    with open(args["config"], "r") as f:
+    with open(args.config, "r") as f:
         config = json.load(f)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -35,9 +35,7 @@ if __name__ == "__main__":
 
     config["id"] = f"UNet_{timestamp}"
 
-    with open(
-        os.path.join(args["checkpoint-path"], f"{model_id}_config.json"), "w"
-    ) as f:
+    with open(os.path.join(args.checkpoint_path, f"{model_id}_config.json"), "w") as f:
         json.dump(config, f, indent=4)
 
     device = "cpu"
@@ -96,7 +94,7 @@ if __name__ == "__main__":
         for example in test_examples
     ]
 
-    writer = SummaryWriter(os.path.join(args["tensorboard-path"], model_id))
+    writer = SummaryWriter(os.path.join(args.tensorboard_path, model_id))
     print(f"Training model {model_id}")
 
     train_model(
@@ -110,5 +108,5 @@ if __name__ == "__main__":
         writer,
         0,
         puzzles=puzzles,
-        save_path=args["checkpoint-path"],
+        save_path=args.checkpoint_path,
     )
