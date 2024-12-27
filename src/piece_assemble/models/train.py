@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -97,7 +99,7 @@ def evaluate(
     model: torch.nn.Module,
     val_loader: torch.utils.data.DataLoader,
     loss_fn: torch.nn.Module,
-) -> dict[str, float]:
+) -> dict:
     model.eval()
 
     running_loss = 0
@@ -162,8 +164,12 @@ def train_model(
     tb_writer: torch.utils.tensorboard.SummaryWriter,
     start_epoch: int = 0,
     puzzles: list[tuple[dict[str, TransformedPiece], list[list[str]]]] | None = None,
+    save_path: str | None = None,
 ) -> None:
+    if save_path is None:
+        save_path = "."
     epoch_number = start_epoch
+    best_f1 = 0
     for epoch_number in range(epoch_number, epoch_number + epochs):
         model.train(True)
         avg_loss = train_one_epoch(
@@ -199,7 +205,12 @@ def train_model(
             tb_writer.add_scalar("Validation Extra", metrics["extra"], epoch_number)
             tb_writer.flush()
 
-        model_path = f"{model_id}_{epoch_number}"
+        if metrics["recall"] > best_f1:
+            best_f1 = metrics["recall"]
+            model_path = os.path.join(save_path, f"{model_id}_best")
+            torch.save(model.state_dict(), model_path)
+
+        model_path = os.path.join(save_path, f"{model_id}_latest")
         torch.save(model.state_dict(), model_path)
 
         tb_writer.flush()
