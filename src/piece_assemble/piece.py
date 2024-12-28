@@ -117,7 +117,7 @@ class Piece:
             polygon_approximation_tolerance, contour, holes
         )
         polygon = make_valid(polygon)
-        hole_features = cls._extract_hole_features(holes, img_avg)
+        hole_features = None
 
         return cls(
             name,

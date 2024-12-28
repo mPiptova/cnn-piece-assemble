@@ -1,4 +1,5 @@
 from itertools import combinations
+from typing import Mapping
 
 import numpy as np
 import torch
@@ -62,8 +63,7 @@ def model_output_to_compact_match(
 
 def compute_piece_embeddings(
     model: EmbeddingUnet,
-    pieces: dict[str, Piece],
-    window_size: int,
+    pieces: Mapping[str, Piece],
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
     """Compute embeddings for all pieces.
 
@@ -73,8 +73,6 @@ def compute_piece_embeddings(
         EmbeddingUnet model.
     pieces
         A dictionary of Piece objects.
-    window_size
-        Size of the sliding window used to extract patches.
 
     Returns
     -------
@@ -95,7 +93,7 @@ def compute_piece_embeddings(
     embeddings_second = {}
 
     for name, piece in pieces.items():
-        data = get_img_patches_from_piece(piece.to_piece(), window_size)
+        data = get_img_patches_from_piece(piece.to_piece(), model.window_size)
         p_data = preprocess_piece_data(data)
         input, _ = collator([(p_data, p_data, None)])
         device = next(model.parameters()).device
@@ -173,13 +171,10 @@ def embeddings_to_correspondence_matrix(
 def get_matches(
     model: PairNetwork,
     pieces: dict[str, TransformedPiece],
-    window_size: int,
     activation_threshold: float,
 ) -> list[tuple[TransformedPiece, TransformedPiece]]:
 
-    embeddings_first, embeddings_second = compute_piece_embeddings(
-        model, pieces, window_size
-    )
+    embeddings_first, embeddings_second = compute_piece_embeddings(model, pieces)
 
     all_pairs = set([tuple(sorted((x, y))) for x, y in list(combinations(pieces, 2))])
     matches = []

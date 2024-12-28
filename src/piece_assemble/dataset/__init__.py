@@ -114,6 +114,8 @@ class PairsDataset(torch.utils.data.Dataset):
 
 
 def preprocess_piece_data(data: np.ndarray) -> np.ndarray:
+    if data.min() == -1:
+        return data
     return 1 - data * 2
 
 
@@ -224,7 +226,8 @@ def get_img_patches_from_piece(piece: Piece, window_size: int) -> np.ndarray:
     patches
         An array of image patches.
     """
-    return get_img_patches(piece.contour, piece.img, window_size)
+    img = piece.feature_extractor.prepare_image(piece.img, piece.mask, piece.img_avg)
+    return get_img_patches(piece.contour, img, window_size)
 
 
 def get_img_patches(contour: Points, img: np.ndarray, window_size: int) -> np.ndarray:

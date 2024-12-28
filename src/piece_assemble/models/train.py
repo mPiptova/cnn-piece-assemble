@@ -190,7 +190,7 @@ def train_model(
         tb_writer.flush()
 
         if puzzles is not None:
-            metrics = eval_puzzles(model, puzzles, 7, 0.8)
+            metrics = eval_puzzles(model, puzzles, 0.8)
             tb_writer.add_scalar(
                 "Validation Piece-Level Precision", metrics["precision"], epoch_number
             )

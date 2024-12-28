@@ -1,4 +1,5 @@
 from itertools import combinations
+from typing import Mapping
 
 from torch import nn
 from tqdm import tqdm
@@ -14,14 +15,13 @@ from piece_assemble.piece import TransformedPiece
 
 def eval_puzzle(
     model: PairNetwork,
-    pieces: dict[str, TransformedPiece],
+    pieces: Mapping[str, TransformedPiece],
     neighbors: list[list[str]],
-    window_size: int,
     activation_threshold: float = 0.8,
 ) -> dict:
     model.eval()
 
-    embeddings1, embeddings2 = compute_piece_embeddings(model, pieces, window_size)
+    embeddings1, embeddings2 = compute_piece_embeddings(model, pieces)
 
     neighbors_set = set([tuple(sorted((x, y))) for x, y in neighbors])
     all_pairs = set([tuple(sorted((x, y))) for x, y in list(combinations(pieces, 2))])
@@ -87,7 +87,6 @@ def eval_puzzle(
 def eval_puzzles(
     model: nn.Module,
     puzzles: list[tuple[dict[str, TransformedPiece], list[list[str]]]],
-    window_size: int,
     activation_threshold: float = 0.8,
 ) -> dict[str, float]:
     aggr_metrics = {
@@ -100,9 +99,7 @@ def eval_puzzles(
     }
 
     for pieces, neighbors in puzzles:
-        metrics = eval_puzzle(
-            model, pieces, neighbors, window_size, activation_threshold
-        )
+        metrics = eval_puzzle(model, pieces, neighbors, activation_threshold)
         for k, v in metrics.items():
             aggr_metrics[k] += v
 

@@ -95,7 +95,7 @@ def create_dataset(
         os.remove(data_index_path)
 
     offset = 0
-    for i, puzzle_dir in tqdm(enumerate(puzzle_dirs)):
+    for i, puzzle_dir in tqdm(enumerate(puzzle_dirs), total=len(puzzle_dirs)):
         pieces, neighbors = load_puzzle(puzzle_dir, background_val)
         pieces, neighbors = rename_pieces(pieces, neighbors, offset)
         offset += len(pieces)
