@@ -221,8 +221,10 @@ class PairNetwork(nn.Module):
         self.window_size = window_size
         self.background_val = background_val
 
+        self.feature_size = window_size * window_size * 3
+
         self.embedding_network1 = EmbeddingUnet(
-            147,
+            self.feature_size,
             embedding_dim,
             kernel_size,
             depth=depth,
@@ -234,7 +236,7 @@ class PairNetwork(nn.Module):
             self.embedding_network2 = self.embedding_network1
         else:
             self.embedding_network2 = EmbeddingUnet(
-                147,
+                self.feature_size,
                 embedding_dim,
                 kernel_size,
                 depth=depth,
@@ -248,7 +250,10 @@ class PairNetwork(nn.Module):
     def padding(self) -> int:
         dim = 256
         device = next(self.parameters()).device
-        x = (torch.ones(1, 147, dim).to(device), torch.ones(1, 147, dim).to(device))
+        x = (
+            torch.ones(1, self.feature_size, dim).to(device),
+            torch.ones(1, self.feature_size, dim).to(device),
+        )
 
         return int((dim - self.forward(x).shape[1]) / 2)
 
