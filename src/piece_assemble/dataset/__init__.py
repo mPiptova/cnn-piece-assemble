@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os
+from itertools import combinations
 from typing import TYPE_CHECKING, Generator, Sequence
 
 import numpy as np
@@ -23,6 +24,7 @@ class PairsDataset(torch.utils.data.Dataset):
         seed: int = 42,
         batch_size: int = 8,
         negative_ratio: float = 0.1,
+        negative_form_same_puzzle_ratio: float = 0,
     ):
         super().__init__()
         self.dataset_dir = dataset_dir
@@ -38,15 +40,56 @@ class PairsDataset(torch.utils.data.Dataset):
             os.path.join(dataset_dir, "neighbors_index.csv"), header=None, dtype=str
         )
 
-        self.negative_pairs = list(
-            self.generate_negative_pairs(
-                int(len(self.neighbors_index) * negative_ratio)
+        self.negative_pairs = []
+        self.negative_pairs = self.generate_negative_pairs(
+            int(len(self.neighbors_index) * negative_ratio)
+        )
+        print
+
+        self.negative_pairs.extend(
+            self.generate_negative_pairs_from_same_puzzle(
+                int(len(self.neighbors_index) * negative_form_same_puzzle_ratio)
             )
         )
 
-    def generate_negative_pairs(
+    def generate_negative_pairs_from_same_puzzle(
         self, count: int
-    ) -> Generator[tuple[str, str], None, None]:
+    ) -> list[tuple[str, str]]:
+        """Generate negative pairs where both pieces come from the same image.
+
+        Parameters
+        ----------
+        count
+            Number of negative pairs to generate."""
+        negative_pairs = {frozenset(pair) for pair in self.negative_pairs}
+
+        all_candidates = set()
+        for file_id in self.pieces_data_index[1].unique():
+            relevant_pieces = self.pieces_data_index.loc[
+                self.pieces_data_index[1] == file_id
+            ][0]
+            all_candidates.update(
+                {
+                    frozenset((piece1, piece2))
+                    for piece1, piece2 in combinations(relevant_pieces, 2)
+                }
+            )
+
+        positive_pairs = {
+            frozenset((pair[0], pair[1])) for _, pair in self.neighbors_index.iterrows()
+        }
+
+        candidates = list(all_candidates - positive_pairs - negative_pairs)
+
+        if len(candidates) == 0:
+            return []
+
+        selection = self.random.choice(
+            len(candidates), min(count, len(candidates)), replace=False
+        )
+        return [tuple(candidates[i]) for i in selection]
+
+    def generate_negative_pairs(self, count: int) -> list[tuple[str, str]]:
         """Generate negative pairs.
 
         Parameters
@@ -54,20 +97,24 @@ class PairsDataset(torch.utils.data.Dataset):
         count
             Number of negative pairs to generate.
         """
-        positive_pairs = [
-            (pair[0], pair[1]) for _, pair in self.neighbors_index.iterrows()
-        ]
+        positive_pairs = {
+            frozenset((pair[0], pair[1])) for _, pair in self.neighbors_index.iterrows()
+        }
 
-        counter = 0
-        while counter < count:
-            piece_pair = tuple(
-                self.random.choice(self.pieces_data_index[0], 2, replace=False)
-            )
-            piece_pair2 = (piece_pair[1], piece_pair[0])
+        all_pieces = list(self.pieces_data_index[0].unique())
+        negative_pairs = {frozenset(pair) for pair in self.negative_pairs}
 
-            if piece_pair not in positive_pairs and piece_pair2 not in positive_pairs:
-                counter += 1
-                yield piece_pair
+        def negative_generator() -> Generator[tuple[str, str], None, None]:
+            while True:
+                piece1, piece2 = self.random.choice(all_pieces, 2, replace=False)
+                if frozenset((piece1, piece2)) not in positive_pairs.union(
+                    negative_pairs
+                ):
+                    negative_pairs.add(frozenset((piece1, piece2)))
+                    yield piece1, piece2
+
+        generator = negative_generator()
+        return [next(generator) for _ in range(count)]
 
     def __len__(self) -> int:
         return len(self.neighbors_index) + len(self.negative_pairs)
@@ -210,7 +257,9 @@ class BatchCollator:
         return (pieces1, pieces2), matrices
 
 
-def get_img_patches_from_piece(piece: Piece, window_size: int) -> np.ndarray:
+def get_img_patches_from_piece(
+    piece: Piece, window_size: int, background_val: float = -1
+) -> np.ndarray:
     """
     Extract image patches from the given piece.
 
@@ -226,8 +275,9 @@ def get_img_patches_from_piece(piece: Piece, window_size: int) -> np.ndarray:
     patches
         An array of image patches.
     """
-    img = piece.feature_extractor.prepare_image(piece.img, piece.mask, piece.img_avg)
-    return get_img_patches(piece.contour, img, window_size)
+    image = piece.img.copy()
+    image[~piece.mask] = background_val
+    return get_img_patches(piece.contour, image, window_size)
 
 
 def get_img_patches(contour: Points, img: np.ndarray, window_size: int) -> np.ndarray:
