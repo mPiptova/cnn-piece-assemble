@@ -35,6 +35,8 @@ def generate_noise_image(shape: tuple[int, int], octaves: int = 30) -> np.ndarra
 
 
 def _get_erosion_prob(mask: np.ndarray, width: int = 4) -> np.ndarray:
+    # pad mask with False to handle edge cases
+    mask = np.pad(mask, 1, "constant", constant_values=False)
     dil_prob_mask = mask.astype(float)
     dil_mask = mask.astype(bool)
     footprint = disk(1)
@@ -43,7 +45,7 @@ def _get_erosion_prob(mask: np.ndarray, width: int = 4) -> np.ndarray:
         dil_mask = binary_erosion(dil_mask, footprint=footprint)
         dil_prob_mask[dil_mask] = (width - i - 1) * step
 
-    return dil_prob_mask
+    return dil_prob_mask[1:-1, 1:-1]
 
 
 def _get_random_noise_crop(
