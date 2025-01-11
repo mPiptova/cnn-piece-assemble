@@ -15,7 +15,9 @@ from piece_assemble.puzzle_generator.lines import (
 )
 
 
-def divide_plane_by_curve(curve: np.ndarray, height: int, width: int) -> np.ndarray:
+def divide_plane_by_curve(
+    curve: np.ndarray, height: int, width: int, rng: np.random.Generator
+) -> np.ndarray:
     """Divide a plane by a curve.
 
     Parameters
@@ -42,14 +44,16 @@ def divide_plane_by_curve(curve: np.ndarray, height: int, width: int) -> np.ndar
     background = np.where(img == 0)
     img = flood_fill(img, (background[0][0], background[1][0]), 1)
 
-    # In half the cases, choose the second partition
-    if np.random.rand() > 0.5:
+    # In half of the cases, choose the second partition
+    if rng.random() > 0.5:
         img = 1 - img
 
     return img
 
 
-def add_division_by_curve(img: np.ndarray, curve: np.ndarray) -> np.ndarray:
+def add_division_by_curve(
+    img: np.ndarray, curve: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
     """Use the image to add one level of division to the image.
 
     Parameters
@@ -68,17 +72,20 @@ def add_division_by_curve(img: np.ndarray, curve: np.ndarray) -> np.ndarray:
     The input image is multiplied by the division image with random values.
     """
 
-    new_division = divide_plane_by_curve(curve, img.shape[0], img.shape[1]).astype(
+    new_division = divide_plane_by_curve(curve, img.shape[0], img.shape[1], rng).astype(
         float
     )
-    value = np.random.rand() * 0.3 + 0.5
+    value = rng.random() * 0.3 + 0.5
     new_division[new_division == 0] = value
 
     return img * new_division
 
 
 def add_division_level(
-    img: np.ndarray, num_samples: int, perturbation_strength: float
+    img: np.ndarray,
+    num_samples: int,
+    perturbation_strength: float,
+    rng: np.random.Generator,
 ) -> np.ndarray:
     """Add one level of division to the image.
 
@@ -97,12 +104,14 @@ def add_division_level(
     Each component (representing one piece) has different float value.
     """
     height, width = img.shape[0], img.shape[1]
-    p1, p2 = generate_random_line(height, width)
+    p1, p2 = generate_random_line(height, width, rng)
 
-    points = sample_points_on_line(p1, p2, num_samples)
-    perturbed_points = perturbate_points(points, perturbation_strength, height, width)
+    points = sample_points_on_line(p1, p2, num_samples, rng)
+    perturbed_points = perturbate_points(
+        points, perturbation_strength, height, width, rng
+    )
     curve = interpolate_curve(perturbed_points, max(height, width) * 2000)
-    img = add_division_by_curve(img, curve)
+    img = add_division_by_curve(img, curve, rng)
     return img
 
 
@@ -111,6 +120,7 @@ def get_random_division(
     width: int,
     num_curves: int,
     num_samples: int,
+    rng: np.random.Generator,
     perturbation_strength: float | None = None,
 ) -> np.ndarray:
     """Generate random division of the image with specified shape.
@@ -138,7 +148,7 @@ def get_random_division(
 
     img = np.ones((height, width), dtype=float)
     for _ in range(num_curves):
-        img = add_division_level(img, num_samples, perturbation_strength)
+        img = add_division_level(img, num_samples, perturbation_strength, rng)
         img = _to_float_division_labels(img)
 
     return img
@@ -224,6 +234,7 @@ def get_puzzle_division(
     min_piece_area: int,
     num_curves: int,
     num_samples: int,
+    rng: np.random.Generator,
     perturbation_strength: float | None = None,
 ) -> np.ndarray:
     """Generate puzzle division of the image with specified shape.
@@ -254,7 +265,7 @@ def get_puzzle_division(
         perturbation_strength = min(height, width) / 50
 
     division = get_random_division(
-        height, width, num_curves, num_samples, perturbation_strength
+        height, width, num_curves, num_samples, rng, perturbation_strength
     )
     division = reduce_number_of_pieces(division, num_pieces, min_piece_area)
     division = _to_int_division_labels(division)
@@ -302,7 +313,7 @@ def crop_piece_img(
 
 
 def apply_division_to_image(
-    img: np.ndarray, division: np.ndarray
+    img: np.ndarray, division: np.ndarray, rng: np.random.Generator
 ) -> list[TransformedPiece]:
     """Divide image into defined pieces."""
 
@@ -326,7 +337,7 @@ def apply_division_to_image(
         )
 
         # Apply random rotation
-        angle = np.random.uniform(0, 360)
+        angle = rng.uniform(0, 360)
         piece_img = rotate(
             piece_img, angle, resize=True, mode="constant", cval=1, preserve_range=True
         )

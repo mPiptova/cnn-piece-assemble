@@ -8,7 +8,10 @@ from skimage.morphology import dilation
 
 
 def get_random_point_on_side(
-    side: Literal["left", "right", "top", "bottom"], height: int, width: int
+    side: Literal["left", "right", "top", "bottom"],
+    height: int,
+    width: int,
+    rng: np.random.Generator,
 ) -> tuple[int, int]:
     """Generate a random point on a given side of a rectangle.
 
@@ -26,17 +29,17 @@ def get_random_point_on_side(
     A tuple of two integers representing row and column coordinates of the point.
     """
     if side == "left":
-        return (np.random.randint(0, height), 0)
+        return (rng.integers(0, height), 0)
     elif side == "right":
-        return (np.random.randint(0, height), width - 1)
+        return (rng.integers(0, height), width - 1)
     elif side == "top":
-        return (0, np.random.randint(0, width))
+        return (0, rng.integers(0, width))
     elif side == "bottom":
-        return (height - 1, np.random.randint(0, width))
+        return (height - 1, rng.integers(0, width))
 
 
 def get_random_points_on_different_sides(
-    height: int, width: int
+    height: int, width: int, rng: np.random.Generator
 ) -> tuple[tuple[int, int], tuple[int, int]]:
     """Generate two random points on different sides of a rectangle.
 
@@ -52,16 +55,16 @@ def get_random_points_on_different_sides(
     A tuple of two integers representing row and column coordinates of the point.
     """
     sides = ["left", "right", "top", "bottom"]
-    side1, side2 = np.random.choice(sides, 2, replace=False)
+    side1, side2 = rng.choice(sides, 2, replace=False)
 
-    point1 = get_random_point_on_side(side1, height, width)
-    point2 = get_random_point_on_side(side2, height, width)
+    point1 = get_random_point_on_side(side1, height, width, rng)
+    point2 = get_random_point_on_side(side2, height, width, rng)
 
     return point1, point2
 
 
 def generate_random_line(
-    height: int, width: int
+    height: int, width: int, rng: np.random.Generator
 ) -> tuple[tuple[int, int], tuple[int, int]]:
     """Generate two random points on rectangle boundary.
 
@@ -76,11 +79,11 @@ def generate_random_line(
     -------
     A tuple of two integers representing row and column coordinates of the point.
     """
-    return get_random_points_on_different_sides(height, width)
+    return get_random_points_on_different_sides(height, width, rng)
 
 
 def sample_points_on_line(
-    p1: tuple[int, int], p2: tuple[int, int], num_samples: int
+    p1: tuple[int, int], p2: tuple[int, int], num_samples: int, rng: np.random.Generator
 ) -> np.ndarray:
     """Sample points on the line segment defined by p1 and p2.
 
@@ -105,9 +108,7 @@ def sample_points_on_line(
     # Randomly choose indices to sample
     idxs = (
         [0]
-        + list(
-            np.random.choice(np.arange(1, num_generated_samples - 1), num_samples - 2)
-        )
+        + list(rng.choice(np.arange(1, num_generated_samples - 1), num_samples - 2))
         + [num_generated_samples - 1]
     )
     idxs = np.sort(idxs)
@@ -118,7 +119,11 @@ def sample_points_on_line(
 
 
 def perturbate_points(
-    points: np.ndarray, perturbation_strength: float, height: int, width: int
+    points: np.ndarray,
+    perturbation_strength: float,
+    height: int,
+    width: int,
+    rng: np.random.Generator,
 ) -> np.ndarray:
     """Perturbate points on a line by adding random noise.
 
@@ -138,7 +143,7 @@ def perturbate_points(
     -------
     A numpy array of shape (num_points, 2) containing the perturbed points.
     """
-    perturbed_points = points + np.random.normal(
+    perturbed_points = points + rng.normal(
         scale=perturbation_strength, size=points.shape
     )
 

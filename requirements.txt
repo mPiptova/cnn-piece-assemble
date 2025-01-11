@@ -28,6 +28,7 @@ opencv-python==4.9.0.80
 packaging==23.2
 pandas==2.2.1
 parso==0.8.3
+perlin-noise==1.13
 pexpect==4.9.0
 pillow==10.2.0
 platformdirs==4.2.0
