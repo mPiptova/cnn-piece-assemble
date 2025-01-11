@@ -37,6 +37,7 @@ import json
 import math
 import os
 
+import numpy as np
 from PIL import Image
 
 from piece_assemble.cluster import Cluster, DummyClusterScorer
@@ -59,11 +60,17 @@ def generate_puzzle(
     perturbation_strength: int,
     output_dir: str,
 ) -> None:
+    rng = np.random.default_rng()
     division = get_random_division(
-        img.shape[0], img.shape[1], num_divisions, num_samples, perturbation_strength
+        img.shape[0],
+        img.shape[1],
+        num_divisions,
+        num_samples,
+        rng,
+        perturbation_strength,
     )
     division = reduce_number_of_pieces(division, num_pieces, 1000)
-    pieces = apply_division_to_image(img, division)
+    pieces = apply_division_to_image(img, division, rng)
 
     piece_dict = {piece.name: piece for piece in pieces}
 
