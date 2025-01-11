@@ -8,6 +8,8 @@ python generate.py NUM_PIECES \
     [--num-samples NUM_SAMPLES] \
     [--perturbation-strength PERTURBATION_STRENGTH] \
     [--max-size MAX_SIZE] \
+    [--erosion-strength EROSION_STRENGTH] \
+    [--color-aug]
     OUTPUT_DIR \
     IMG1 [IMG2 ...]
 ```
@@ -20,6 +22,9 @@ store it in output/dir
 python generate.py 50 output/dir path/to/image1.jpg path/to/image2.jpg
 ```
 
+Number of divisions, number of samples and perturbation strength values are derived from
+image size and number of pieces, if not set explicitly. These values provide reasonable
+defaults.
 Following command will generate puzzle with custom parameters
 
 ```
@@ -27,6 +32,16 @@ python generate.py 50 \
     --num-divisions 10 \
     --num-samples 10 \
     --perturbation-strength 5 \
+    output/dir path/to/image1.jpg path/to/image2.jpg
+```
+
+By default, no augmentations are applied. Augmentations can be applied by setting
+`--color-aug` and `--erosion-strength`.
+
+```
+python generate.py 50 \
+    --color-aug \
+    --erosion-strength 5 \
     output/dir path/to/image1.jpg path/to/image2.jpg
 ```
 """
@@ -44,6 +59,8 @@ from piece_assemble.cluster import Cluster, DummyClusterScorer
 from piece_assemble.image import np_to_pil, pil_to_np
 from piece_assemble.neighbors import BorderLengthNeighborClassifier
 from piece_assemble.piece import TransformedPiece
+from piece_assemble.puzzle_generator.color_aug import color_augmentation
+from piece_assemble.puzzle_generator.erosion import apply_random_erosion_to_pieces
 from piece_assemble.puzzle_generator.plane_division import (
     apply_division_to_image,
     get_random_division,
@@ -58,6 +75,8 @@ def generate_puzzle(
     num_divisions: int,
     num_samples: int,
     perturbation_strength: int,
+    erosion_strength: int,
+    color_aug: bool,
     output_dir: str,
 ) -> None:
     rng = np.random.default_rng()
@@ -71,6 +90,13 @@ def generate_puzzle(
     )
     division = reduce_number_of_pieces(division, num_pieces, 1000)
     pieces = apply_division_to_image(img, division, rng)
+
+    if color_aug:
+        for piece in pieces:
+            piece.img = color_augmentation(piece.img, piece.mask)
+
+    if erosion_strength > 0:
+        pieces = apply_random_erosion_to_pieces(pieces, rng, erosion_strength)
 
     piece_dict = {piece.name: piece for piece in pieces}
 
@@ -141,6 +167,19 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--erosion-strength",
+        type=int,
+        default=0,
+        help="Erosion strength. If set to 0, no erosion will be applied",
+    )
+
+    parser.add_argument(
+        "--color-aug",
+        action="store_true",
+        help="If set, color augmentation will be applied",
+    )
+
+    parser.add_argument(
         "output_dir",
         type=str,
         help="Output directory",
@@ -195,5 +234,7 @@ if __name__ == "__main__":
             args.num_divisions,
             args.num_samples,
             args.perturbation_strength,
+            args.erosion_strength,
+            args.color_aug,
             output_dir,
         )
