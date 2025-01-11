@@ -101,12 +101,10 @@ def get_border_complexity(
     if len(idxs) == 0 or piece is None:
         return 0
 
-    segment_count = piece.features.get_complexity(idxs)
-
     contour = smooth_contours(piece.contour[idxs], border_dist_tol * 2, False)
     winding_angle = get_curve_winding_angle(contour)
 
-    return segment_count * winding_angle  # type: ignore
+    return winding_angle  # type: ignore
 
 
 def longest_continuous_border(

@@ -1,5 +1,5 @@
 from itertools import combinations
-from typing import Mapping
+from typing import Any, Mapping
 
 import numpy as np
 import torch
@@ -12,18 +12,18 @@ from piece_assemble.dataset import (
     get_img_patches_from_piece,
     preprocess_piece_data,
 )
-from piece_assemble.matching.match import CompactMatch, Match
+from piece_assemble.matching.match import CandidateMatch, Match
 from piece_assemble.models import EmbeddingUnet, PairNetwork
-from piece_assemble.piece import Piece, TransformedPiece
+from piece_assemble.piece import Piece
 from piece_assemble.types import NpImage
 
 
-def model_output_to_match(
+def model_output_to_candidate_match(
     piece1: Piece,
     piece2: Piece,
     output: np.ndarray,
     threshold: float,
-) -> CompactMatch | None:
+) -> CandidateMatch | None:
     if output.max() < threshold:
         return None
 
@@ -31,12 +31,12 @@ def model_output_to_match(
     if len(idxs1) == 0:
         return None
 
-    match = Match(piece1, piece2, idxs1, idxs2, 1 / len(idxs1))
+    match = CandidateMatch(piece1, piece2, idxs1, idxs2, 1 / len(idxs1))
 
     return match
 
 
-def model_output_to_compact_match(
+def model_output_to_match(
     piece1: Piece,
     piece2: Piece,
     output: np.ndarray,
@@ -45,12 +45,13 @@ def model_output_to_compact_match(
     icp_max_iters: dict | None = None,
     icp_min_change: dict | None = None,
     ios_tol: float | None = None,
-) -> CompactMatch | None:
-    match = model_output_to_match(piece1, piece2, output, threshold)
+) -> Match | None:
+    match = model_output_to_candidate_match(piece1, piece2, output, threshold)
     if match is None:
         return None
 
-    verify_params = {"dist_tol": dist_tol}
+    verify_params: dict[str, Any] = {}
+    verify_params["dist_tol"] = dist_tol
     if icp_max_iters is not None:
         verify_params["icp_max_iters"] = icp_max_iters
     if icp_min_change is not None:
@@ -170,9 +171,9 @@ def embeddings_to_correspondence_matrix(
 
 def get_matches(
     model: PairNetwork,
-    pieces: dict[str, TransformedPiece],
+    pieces: dict[str, Piece],
     activation_threshold: float,
-) -> list[tuple[TransformedPiece, TransformedPiece]]:
+) -> list[CandidateMatch]:
 
     embeddings_first, embeddings_second = compute_piece_embeddings(model, pieces)
 
@@ -190,7 +191,9 @@ def get_matches(
         piece1 = piece1.transform(piece2.transformation.inverse())
         piece2 = piece2.transform(piece2.transformation.inverse())
 
-        match = model_output_to_match(piece1, piece2, output, activation_threshold)
+        match = model_output_to_candidate_match(
+            piece1, piece2, output, activation_threshold
+        )
 
         if match is not None:
             matches.append(match)

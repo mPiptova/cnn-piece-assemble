@@ -14,7 +14,6 @@ from piece_assemble.contours import extract_contours, smooth_contours
 from piece_assemble.types import Points
 
 if TYPE_CHECKING:
-    from piece_assemble.feature_extraction.base import FeatureExtractor, Features
     from piece_assemble.types import BinImg, NpImage
 
 
@@ -26,10 +25,6 @@ class Piece:
         img_avg: NpImage,
         mask: BinImg,
         contour: Points,
-        feature_extractor: FeatureExtractor,
-        features: Features,
-        holes: list[Points],
-        hole_features: list[Features] | None,
         polygon: Polygon,
     ):
         self.name = name
@@ -37,11 +32,9 @@ class Piece:
         self.img_avg = img_avg
         self.mask = mask
         self.contour = contour
-        self.feature_extractor = feature_extractor
-        self.features = features
-        self.holes = holes
         self.polygon = polygon
-        self.hole_features = hole_features
+
+        self.transformation = Transformation.identity()
 
     @classmethod
     def from_image(
@@ -49,7 +42,6 @@ class Piece:
         name: str,
         img: NpImage,
         mask: BinImg,
-        feature_extractor: FeatureExtractor,
         sigma: float = 5,
         polygon_approximation_tolerance: float = 3,
         img_mean_window_r: int = 3,
@@ -64,8 +56,6 @@ class Piece:
             The image of the piece.
         mask
             The binary mask of the piece.
-        feature_extractor
-            The feature extractor used to extract the features of the piece.
         sigma
             The standard deviation of the Gaussian kernel used for smoothing the
             contours.
@@ -104,20 +94,13 @@ class Piece:
         # Dilate mask to compensate for natural erosion of pieces
         contours = extract_contours(dilation(mask, diamond(1)).astype("uint8"))
         outline_contour = contours[0]
-        holes = contours[1]
 
         contour = smooth_contours(outline_contour, sigma)
-        holes = [smooth_contours(hole, sigma) for hole in holes if len(hole) > 100]
-
-        features = feature_extractor.extract(
-            contour, feature_extractor.prepare_image(img, mask, img_avg)
-        )
 
         polygon = cls._get_polygon_approximation(
-            polygon_approximation_tolerance, contour, holes
+            polygon_approximation_tolerance, contour
         )
         polygon = make_valid(polygon)
-        hole_features = None
 
         return cls(
             name,
@@ -125,10 +108,6 @@ class Piece:
             img_avg,
             mask,
             contour,
-            feature_extractor,
-            features,
-            holes,
-            hole_features,
             polygon,
         )
 
@@ -137,35 +116,17 @@ class Piece:
         cls,
         polygon_approximation_tolerance: float,
         contour: Points,
-        holes: list[Points],
     ) -> Polygon:
         polygon = geometry.Polygon(
             approximate_polygon(contour, polygon_approximation_tolerance)
         )
-        hole_polygons = [
-            geometry.Polygon(approximate_polygon(hole, polygon_approximation_tolerance))
-            for hole in holes
-        ]
-
-        for hole_polygon in hole_polygons:
-            polygon = polygon.difference(hole_polygon)
-
         return polygon
-
-    @classmethod
-    def _extract_hole_features(
-        cls, holes: list[Points], img_avg: NpImage
-    ) -> list[Features]:
-        hole_features = []
-
-        for hole in holes:
-            feature = cls.feature_extractor.extract(hole, img_avg)
-            hole_features.append(feature)
-
-        return hole_features
 
     def to_piece(self) -> Piece:
         return self
+
+    def transform(self, transformation: Transformation) -> TransformedPiece:
+        return TransformedPiece(self, transformation)
 
 
 class TransformedPiece(Piece):
@@ -176,10 +137,6 @@ class TransformedPiece(Piece):
             piece.img_avg,
             piece.mask,
             piece.contour,
-            piece.feature_extractor,
-            piece.features,
-            piece.holes,
-            piece.hole_features,
             piece.polygon,
         )
         self._piece = piece

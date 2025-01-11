@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import math
 import os
 import random
 import shutil
-import time
-from multiprocessing import Manager, Pool
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
@@ -15,38 +12,13 @@ from tqdm import tqdm
 from image import np_to_pil
 from piece_assemble.cluster import Cluster
 from piece_assemble.cycles import TransformationGraph
+from piece_assemble.models import PairNetwork
+from piece_assemble.models.predict import get_matches
 
 if TYPE_CHECKING:
     from piece_assemble.cluster import ClusterScorer
-    from piece_assemble.feature_extraction.base import FeatureExtractor
-    from piece_assemble.matching.match import CompactMatch, Match
+    from piece_assemble.matching.match import Match
     from piece_assemble.piece import Piece
-
-
-class Queue:
-    def __init__(self, parallel: bool = False):
-        self._queue = None
-        self._list = []
-        if parallel:
-            self._queue = Manager().Queue()
-
-    def empty(self) -> bool:
-        if self._queue is not None:
-            return self._queue.empty()
-        else:
-            return len(self._list) == 0
-
-    def get(self) -> CompactMatch:
-        if self._queue is not None:
-            return self._queue.get()  # type: ignore
-        else:
-            return self._list.pop(0)  # type: ignore
-
-    def put(self, item: CompactMatch | None) -> None:
-        if self._queue is not None:
-            self._queue.put(item)
-        else:
-            self._list.append(item)
 
 
 class Clustering:
@@ -55,11 +27,9 @@ class Clustering:
     def __init__(
         self,
         pieces: list[Piece],
-        feature_extractor: FeatureExtractor,
         cluster_scorer: ClusterScorer,
     ) -> None:
         self.pieces = pieces
-        self.feature_extractor = feature_extractor
         self.cluster_scorer = cluster_scorer
         self.all_ids = [piece.name for piece in pieces]
 
@@ -73,16 +43,16 @@ class Clustering:
             return None
         return self.clusters[0]  # type: ignore
 
-    def reset(self, reset_all_matches: bool = False) -> None:
+    def reset(self, forget_found_matches: bool = False) -> None:
         self.clusters = []
         self.trusted_clusters = []
         self._i = 0
-        self.all_pair_clusters = {}
+        self.used_pair_clusters = {}
         self.cluster_history = []
         self.assembled = False
 
-        if reset_all_matches:
-            self.all_matches = None
+        if forget_found_matches:
+            self.all_pair_clusters = []
 
     def set_logging(
         self,
@@ -91,6 +61,7 @@ class Clustering:
         store_old_matches: bool = False,
         store_trusted_clusters: bool = False,
     ) -> None:
+
         self._output_path = output_images_path
         self._store_new_matches = store_new_matches
         self._store_old_matches = store_old_matches
@@ -104,11 +75,6 @@ class Clustering:
         except Exception:
             pass
 
-    def find_candidate_matches(self, n_matches: int = 40000) -> None:
-        self.all_matches = self.feature_extractor.find_all_matches(self.pieces)[
-            :n_matches
-        ]
-
     def __call__(
         self,
         n_iters: int,
@@ -116,122 +82,74 @@ class Clustering:
         cluster_config: dict,
         icp_max_iters: int,
         icp_min_change: float,
-        n_new_matches: int = 10,
-        n_processes: int = 4,
-        min_complexity: int = 2,
-        n_used_matches: int = 40000,
+        model: PairNetwork,
     ) -> Cluster | None:
         self.cluster_config = cluster_config
+        self.model = model
 
-        if self.all_matches is None:
-            self.find_candidate_matches(n_used_matches)
-
-        # matches = self.all_matches.copy()
-
-        queue = Queue(parallel=n_processes > 1)
-
-        if n_processes > 1:
-            self._run_parallel(
-                n_iters,
-                trusted_cluster_config,
-                icp_max_iters,
-                icp_min_change,
-                n_new_matches,
-                n_processes,
-                min_complexity,
-                queue,
-            )
-        else:
-            self._run_serial(
-                n_iters,
-                trusted_cluster_config,
-                icp_max_iters,
-                icp_min_change,
-                n_new_matches,
-                min_complexity,
-                queue,
-            )
+        self.run(
+            n_iters,
+            trusted_cluster_config,
+            icp_max_iters,
+            icp_min_change,
+        )
         return self.best_cluster
 
-    def _run_parallel(
-        self,
-        n_iters: int,
-        trusted_cluster_config: dict,
-        icp_max_iters: int,
-        icp_min_change: float,
-        n_new_matches: int,
-        n_processes: int,
-        min_complexity: int,
-        queue: Queue,
-    ) -> None:
-        matches = self.all_matches.copy()  # type: ignore
-        with Pool(n_processes) as p:
-            self._worker_count = n_processes
-            for j in range(0, self._worker_count):
-                p.apply_async(
-                    matches_checker,
-                    args=(
-                        matches[j :: self._worker_count],
-                        queue,
-                        self.cluster_config,
-                        icp_max_iters,
-                        icp_min_change,
-                    ),
-                )
+    def _generate_matches(self, icp_max_iters: int, icp_min_change: float) -> None:
+        if len(self.all_pair_clusters) > 0:
+            return
 
-            self._workers_finished = 0
-            for i in range(self._i, self._i + n_iters):
-                if self.assembled:
-                    break
-                self._i = i + 1
-                self.run_iteration(
-                    i,
-                    trusted_cluster_config,
-                    n_new_matches,
-                    min_complexity,
-                    queue,
-                )
+        self.all_pair_clusters = []
+        self.all_matches = []
 
-    def _run_serial(
-        self,
-        n_iters: int,
-        trusted_cluster_config: dict,
-        icp_max_iters: int,
-        icp_min_change: float,
-        n_new_matches: int,
-        min_complexity: int,
-        queue: Queue,
-    ) -> None:
-        all_compact_matches = []
-        for match in tqdm(self.all_matches, desc="Generating matches"):
-            compact_match = match.verify(
+        piece_dict = {piece.name: piece for piece in self.pieces}
+        candidate_matches = get_matches(self.model, piece_dict, 0.7)
+
+        for candidate_match in tqdm(candidate_matches, desc="Finding matches"):
+            verified_match = candidate_match.verify(
                 self.cluster_config["border_dist_tol"],
                 icp_max_iters=icp_max_iters,
                 icp_min_change=icp_min_change,
             )
-            if compact_match is not None:
-                all_compact_matches.append(compact_match)
-                queue.put(compact_match)
+            if verified_match is not None:
+                self.all_matches.append(verified_match)
+                cluster = verified_match.to_cluster(
+                    self.cluster_scorer, self.cluster_config, piece_dict
+                )
+                self.all_pair_clusters.append(cluster)
 
-        cycles = self.get_cycles(all_compact_matches)
-        self.update_trusted_clusters(cycles, lambda _: True)
+        self.all_pair_clusters = sorted(
+            self.all_pair_clusters, key=lambda c: c.score, reverse=True
+        )
 
-        self._worker_count = 1
-        self._workers_finished = 0
+    def run(
+        self,
+        n_iters: int,
+        trusted_cluster_config: dict,
+        icp_max_iters: int,
+        icp_min_change: float,
+    ) -> None:
+        self._generate_matches(icp_max_iters, icp_min_change)
 
-        for i in range(self._i, self._i + n_iters):
+        clusters_queue = self.all_pair_clusters.copy()
+        if len(clusters_queue) < 10 * len(self.pieces):
+            cycles = self.get_cycles(self.all_matches)
+            self.update_trusted_clusters(cycles, lambda _: True)
+        clusters_queue = self.update_trusted_clusters(
+            clusters_queue,
+            lambda cluster: cluster_can_be_trusted(cluster, **trusted_cluster_config),
+        )
+
+        for i in tqdm(range(self._i, self._i + n_iters)):
             if self.assembled:
                 break
             self._i = i + 1
             self.run_iteration(
                 i,
-                trusted_cluster_config,
-                n_new_matches,
-                min_complexity,
-                queue,
+                clusters_queue,
             )
 
-    def get_cycles(self, verified_matches: list[CompactMatch]) -> list[Cluster]:
+    def get_cycles(self, verified_matches: list[Match]) -> list[Cluster]:
         graph = TransformationGraph.from_matches(verified_matches)
         cycles = graph.find_consistent_cycles(3) + graph.find_consistent_cycles(4)
         clusters = []
@@ -247,61 +165,28 @@ class Clustering:
     def run_iteration(
         self,
         i: int,
-        trusted_cluster_config: dict,
-        n_new_matches: int,
-        min_complexity: float,
-        queue: Queue,
+        matches_queue: list,
     ) -> None:
-        print(f"ITERATION {i}")
+        new_cluster = self.get_new_pair_cluster(matches_queue)
 
-        new_pair_clusters = self.get_new_pair_clusters(
-            n_new_matches, queue, trusted_cluster_config, min_complexity
-        )
-
-        potential_trusted_clusters = []
-        for all_found_pair_for_keys in self.all_pair_clusters.values():
-            for pair_cluster in all_found_pair_for_keys:
-                if pair_cluster["count"] >= 10:
-                    potential_trusted_clusters.append(pair_cluster["cluster"])
-
-        self.update_trusted_clusters(potential_trusted_clusters, lambda _: True)
+        if new_cluster is None:
+            return
 
         if self._store_trusted_clusters:
             self.store_iteration(f"{i}trusted", self.trusted_clusters)
 
-        new_pair_clusters.sort(key=lambda cluster: cluster.score, reverse=True)
-
         if self._store_new_matches:
-            self.store_iteration(f"{i}new_matches", new_pair_clusters)
+            self.store_iteration(f"{i}new_matches", [new_cluster])
 
-        # Get interesting previous clusters
-        previous_clusters = []
-        use_previous_clusters = len(self.clusters) >= 1 and (
-            len(self.clusters[0].piece_ids) > 0.5 * len(self.all_ids)
-            or len(new_pair_clusters) < 5
-        )
-        if use_previous_clusters:
-            print("RECYCLING OLD MATCHES")
-            previous_clusters = self.find_applicable_previous_clusters(
-                self.clusters[0], max(5, n_new_matches - len(new_pair_clusters))
-            )
-            if len(previous_clusters) != 0 and self._store_old_matches:
-                self.store_iteration(f"{i}old_matches", previous_clusters)
         self.clusters = self.use_new_matches(
-            self.clusters + self.trusted_clusters, new_pair_clusters + previous_clusters
+            self.clusters + self.trusted_clusters, [new_cluster]
         )
+
         self.clusters = self.recombine(self.clusters)
         self.clusters.sort(key=lambda cluster: cluster.score, reverse=True)
 
         self.store_iteration(f"{i}iter", self.clusters)
         self.cluster_history.append(self.clusters)
-
-        if (
-            self._worker_count == self._workers_finished
-            and len(previous_clusters) == 0
-            and use_previous_clusters
-        ):
-            self.assembled = True
 
         if self.best_cluster is None:
             return
@@ -311,91 +196,57 @@ class Clustering:
         ):
             self.assembled = True
 
-    def get_new_pair_clusters(
+    def get_new_pair_cluster(
         self,
-        n_new_matches: int,
-        queue: Queue,
-        trusted_cluster_config: dict,
-        min_complexity: float,
-    ) -> list[Cluster]:
-        new_pair_clusters = []
-
-        with tqdm(desc="Generating new matches", total=n_new_matches) as pbar:
-            while len(new_pair_clusters) < n_new_matches:
-                if self._workers_finished == self._worker_count:
-                    break
-
-                if self._worker_count == 1 and queue.empty():
-                    break
-
-                if self._worker_count > 1:
-                    if queue.empty():
-                        time.sleep(1)
-                        continue
-
-                new_match = queue.get()
-
-                if new_match is None:
-                    self._workers_finished += 1
-                    print("Worker finished")
-                    continue
-
-                new_cluster = new_match.to_cluster(
-                    self.cluster_scorer,
-                    self.cluster_config,
-                    pieces_dict={piece.name: piece for piece in self.pieces},
-                )
-                # display(np_to_pil(new_cluster.draw()))
-                new_cluster = self.process_new_cluster(
-                    new_cluster, trusted_cluster_config, min_complexity
-                )
-                if new_cluster is not None:
-                    new_pair_clusters.append(new_cluster)
-                    pbar.update(1)
-            return new_pair_clusters
-
-    def process_new_cluster(
-        self, new_cluster: Cluster, trusted_cluster_config: dict, min_complexity: float
+        cluster_queue: list[Cluster],
     ) -> Cluster | None:
-        if type(min_complexity) in (int, float):
-            min_complexity = [min_complexity, min_complexity]
-        if new_cluster.complexity < min_complexity[1]:
-            return None
+        while True:
+            new_cluster = None
+            if len(cluster_queue) > 0:
+                new_cluster = cluster_queue.pop(0)
 
-        new_cluster_list = self.update_trusted_clusters(
-            [new_cluster],
-            lambda cluster: cluster_can_be_trusted(cluster, **trusted_cluster_config),
-        )
-        new_cluster_list = self._check_new_clusters(new_cluster_list)
+            if new_cluster is None and self.best_cluster is not None:
+                previous_clusters = self.find_applicable_previous_clusters(
+                    self.best_cluster, 1
+                )
+                if len(previous_clusters) == 0 and len(cluster_queue) == 0:
+                    return None
+                if len(previous_clusters) != 0:
+                    new_cluster = previous_clusters[0]
+
+            if new_cluster is not None:
+                new_cluster = self.process_new_cluster(new_cluster)
+            if new_cluster is not None:
+                return new_cluster
+
+    def process_new_cluster(self, new_cluster: Cluster) -> Cluster | None:
+        new_cluster_list = self._check_new_clusters([new_cluster])
 
         if len(new_cluster_list) == 0:
             return None
         new_cluster = new_cluster_list[0]
 
         new_keys = frozenset(new_cluster.piece_ids)
-        is_duplicate = False
-        all_found_pair_for_keys = self.all_pair_clusters.get(new_keys, [])
-        for pair_cluster_dict in all_found_pair_for_keys:
-            pair_cluster = pair_cluster_dict["cluster"]
-            if pair_cluster.can_be_merged(new_cluster):
-                if new_cluster.score > pair_cluster.score:
-                    pair_cluster_dict["cluster"] = new_cluster
-                pair_cluster_dict["count"] = pair_cluster_dict["count"] + 1
-                is_duplicate = True
-                break
-
-        if is_duplicate:
-            return None
-
-        all_found_pair_for_keys.append({"cluster": new_cluster, "count": 1})
-        self.all_pair_clusters[new_keys] = all_found_pair_for_keys
-
-        if new_cluster.complexity >= min_complexity[0]:
-            # Use this match now only if it's interesting enough, otherwise
-            # just remember it to use it later
+        if new_keys in self.used_pair_clusters:
             return new_cluster
 
-        return None
+        for cluster in self.clusters:
+            if new_keys.issubset(
+                frozenset(cluster.piece_ids)
+            ) and cluster.common_pieces_match(new_cluster):
+                new_clusters = self.update_trusted_clusters(
+                    [new_cluster], lambda _: True
+                )
+                if len(new_clusters) > 0:
+                    new_cluster = new_clusters[0]
+                else:
+                    new_cluster = None
+                    break
+
+        if new_cluster is not None:
+            self.used_pair_clusters[new_keys] = new_cluster
+
+        return new_cluster
 
     def combine(
         self,
@@ -456,7 +307,7 @@ class Clustering:
         clusters = self.apply_trusted_clusters(clusters)
         clusters = self.cluster_selection(clusters)
         pair_clusters.sort(key=lambda cluster: cluster.score, reverse=True)
-        for c1 in tqdm(pair_clusters, desc="Using new matches"):
+        for c1 in pair_clusters:
             clusters_dict = {
                 frozenset(cluster.piece_ids): cluster for cluster in clusters + [c1]
             }
@@ -508,32 +359,29 @@ class Clustering:
             self.random.shuffle(clusters)
 
             used_pieces = set()
-            with tqdm(desc="Recombining", total=math.comb(len(clusters), 2)) as pbar:
-                for i, c1 in enumerate(clusters[:-1]):
-                    key1 = frozenset(c1.piece_ids)
-                    if key1 in used_pieces:
-                        pbar.update(len(clusters[i + 1 :]))
+            for i, c1 in enumerate(clusters[:-1]):
+                key1 = frozenset(c1.piece_ids)
+                if key1 in used_pieces:
+                    continue
+                for c2 in clusters[i + 1 :]:
+                    key2 = frozenset(c2.piece_ids)
+                    if key1 in used_pieces or key2 in used_pieces:
                         continue
-                    for c2 in clusters[i + 1 :]:
-                        pbar.update(1)
-                        key2 = frozenset(c2.piece_ids)
-                        if key1 in used_pieces or key2 in used_pieces:
-                            continue
 
-                        new_cluster = self.combine(c1, c2, max_cluster_size)
-                        if new_cluster is None:
-                            continue
+                    new_cluster = self.combine(c1, c2, max_cluster_size)
+                    if new_cluster is None:
+                        continue
 
-                        new_key = frozenset(new_cluster.piece_ids)
-                        if new_key in new_clusters_dict.keys():
-                            if new_clusters_dict[new_key].score < new_cluster.score:
-                                new_clusters_dict[new_key] = new_cluster
-                        else:
-                            used_pieces.update(
-                                {key for key in (key1, key2) if len(key) > 2}
-                            )
+                    new_key = frozenset(new_cluster.piece_ids)
+                    if new_key in new_clusters_dict.keys():
+                        if new_clusters_dict[new_key].score < new_cluster.score:
                             new_clusters_dict[new_key] = new_cluster
-                            new_clusters_added = True
+                    else:
+                        used_pieces.update(
+                            {key for key in (key1, key2) if len(key) > 2}
+                        )
+                        new_clusters_dict[new_key] = new_cluster
+                        new_clusters_added = True
 
             if len(new_clusters_dict.values()) == len(clusters):
                 new_clusters_added = False
@@ -599,7 +447,7 @@ class Clustering:
         if len(self.trusted_clusters) == 0:
             return clusters
         new_clusters = {}
-        for cluster in tqdm(clusters, "Applying trusted clusters"):
+        for cluster in clusters:
             for trusted_cluster in self.trusted_clusters:
                 if trusted_cluster.piece_ids.issubset(
                     cluster.piece_ids
@@ -668,7 +516,7 @@ class Clustering:
                 if not cluster.can_be_merged(trusted_cluster):
                     can_be_used = False
                     break
-            if can_be_used:
+            if can_be_used and cluster is not None:
                 selected_clusters.append(cluster)
         return selected_clusters
 
@@ -693,40 +541,19 @@ class Clustering:
 
         previous_cluster_list = []
         cluster_pairs = cluster.get_neighbor_pairs()
-        for keys, pair_previous_clusters in self.all_pair_clusters.items():
+        for keys, c in self.used_pair_clusters.items():
             if keys not in cluster_pairs:
-                pair_previous_clusters = [
-                    cluster["cluster"] for cluster in pair_previous_clusters
-                ]
-                pair_previous_clusters.sort(
-                    key=lambda cluster: cluster.score, reverse=True
-                )
-                if keys.issubset(cluster.piece_ids) and pair_previous_clusters[
-                    0
-                ].common_pieces_match(cluster):
+                if keys.issubset(cluster.piece_ids) and c.common_pieces_match(cluster):
                     continue
-                previous_cluster_list.append(pair_previous_clusters[0])
+                previous_cluster_list.append(c)
 
         previous_cluster_list = self._check_new_clusters(previous_cluster_list)
         if len(previous_cluster_list) > 0:
-            worst_score = min([cluster.score for cluster in previous_cluster_list])
-            probabilities = np.array(
-                [
-                    (cluster.score - worst_score) ** 4
-                    if cluster.piece_ids.intersection(cluster.piece_ids) == 1
-                    else (cluster.score - worst_score)
-                    for cluster in previous_cluster_list
-                ]
-            )
-            probabilities = probabilities**0.5 + +0.0000001
-            probabilities = probabilities / sum(probabilities)
-
             previous_clusters = list(
                 np.random.choice(
                     previous_cluster_list,
                     min(max_count, len(previous_cluster_list)),
                     replace=False,
-                    p=probabilities,
                 )
             )
             return previous_clusters
@@ -799,25 +626,3 @@ def cluster_can_be_trusted(
         and cluster.dist < dist_threshold
         and cluster.color_dist < color_threshold
     )
-
-
-def matches_checker(
-    matches: list[Match],
-    queue: Queue,
-    config: dict,
-    icp_max_iters: int,
-    icp_min_change: float = 0.5,
-) -> None:
-    try:
-        for match in matches:
-            compact_match = match.verify(
-                config["border_dist_tol"],
-                icp_max_iters=icp_max_iters,
-                icp_min_change=icp_min_change,
-            )
-            if compact_match is not None:
-                queue.put(compact_match)
-    except Exception as e:
-        print(e)
-    finally:
-        queue.put(None)

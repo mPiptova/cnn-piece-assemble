@@ -12,6 +12,7 @@ from rustworkx import PyGraph, connected_components
 from scipy.ndimage import gaussian_filter1d
 from shapely import Polygon
 from shapely.ops import unary_union
+from skimage.morphology import erosion
 from skimage.transform import rotate
 
 from geometry import Transformation, get_common_contour_idxs, icp
@@ -20,6 +21,7 @@ from piece_assemble.visualization import draw_contour
 
 if TYPE_CHECKING:
 
+    from piece_assemble.models import PairNetwork
     from piece_assemble.neighbors import NeighborClassifierBase
     from piece_assemble.piece import TransformedPiece
     from piece_assemble.types import Points
@@ -35,6 +37,42 @@ class ClusterScorerBase(ABC):
 class DummyClusterScorer(ClusterScorerBase):
     def __call__(self, cluster: Cluster) -> float:
         return 0
+
+
+class EmbeddingClusterScorer(ClusterScorerBase):
+    def __init__(
+        self,
+        model: PairNetwork,
+        pieces: dict[str, TransformedPiece],
+        activation_threshold: float = 0.7,
+    ) -> None:
+        from piece_assemble.models.predict import compute_piece_embeddings
+
+        super().__init__()
+        self.embeddings_first, self.embeddings_second = compute_piece_embeddings(
+            model, pieces
+        )
+        self.activation_threshold = activation_threshold
+        self.min_piece_len = min([len(p.contour) for p in pieces.values()])
+
+    def __call__(self, cluster: Cluster) -> float:
+        from piece_assemble.models.predict import embeddings_to_correspondence_matrix
+
+        score = 0
+        for neighbor_pair in cluster.get_neighbor_pairs():
+            neighbor_pair = list(neighbor_pair)
+            matrix = embeddings_to_correspondence_matrix(
+                self.embeddings_first[neighbor_pair[0]],
+                self.embeddings_second[neighbor_pair[1]],
+            )
+
+            idxs1, idxs2 = cluster.get_match_border_idxs(*neighbor_pair)
+            if idxs1 is None or idxs2 is None:
+                continue
+            weight = len(idxs1) / self.min_piece_len
+            score += (matrix[idxs1, idxs2].sum() / len(idxs1)) * weight**0.5
+
+        return score
 
 
 class ClusterScorer(ClusterScorerBase):
@@ -57,9 +95,9 @@ class ClusterScorer(ClusterScorerBase):
         complexity_score = (
             cluster.complexity * cluster.avg_neighbor_count * self.w_complexity
         )
-        color_score = -cluster.color_dist * self.w_color_dist
+        color_score = (1 - cluster.color_dist * 100) * self.w_color_dist
         dist_score = -cluster.dist * self.w_dist
-        border_length_score = cluster.border_length * self.w_border_length
+        border_length_score = cluster.rel_border_length * self.w_border_length
         score: float = (
             convexity_score
             + complexity_score
@@ -67,7 +105,7 @@ class ClusterScorer(ClusterScorerBase):
             + dist_score
             + border_length_score
         )
-        return score
+        return score * len(cluster.pieces)
 
 
 class MergeError(Exception):
@@ -129,6 +167,13 @@ class Cluster:
         if len(border) == 0:
             return []
         return np.concatenate(border)
+
+    @cached_property
+    def rel_border_length(self) -> float:
+        return self.border_length / (
+            sum([len(piece.contour) for piece in self.pieces.values()])
+            - self.border_length
+        )
 
     @cached_property
     def border_length(self) -> int:
@@ -468,6 +513,8 @@ class Cluster:
             [self, other],
         )
 
+        if new_cluster.self_intersection > self.self_intersection_tol:
+            return False
         return new_cluster.self_intersection < self.self_intersection_tol
 
     def finetune_transformations(self, num_iters: int = 3) -> Cluster:
@@ -629,7 +676,7 @@ class Cluster:
 
         if len(dists) == 0:
             return 0.000001
-        return np.max(dists)  # type: ignore
+        return np.mean(dists)  # type: ignore
 
     @cached_property
     def neighbor_matrix(self) -> np.ndarray:
@@ -712,6 +759,7 @@ class Cluster:
             contours = contours[(contours[:, 0] < size[0]) & (contours[:, 1] < size[1])]
             img_contour = np.ones((size[0], size[1]))
             img_contour = draw_contour(contours, img_contour)
+            img_contour = erosion(img_contour, np.ones((3, 3)))
             img = np.where(
                 img_contour[:, :, np.newaxis] == 0, np.array([[[1, 0, 0]]]), img
             )
@@ -760,7 +808,9 @@ class Cluster:
         neighbor_classifier: NeighborClassifierBase,
     ) -> Cluster:
         transformed_pieces = {
-            p["id"]: TransformedPiece.from_dict(p, pieces[p["id"]])
+            p["id"]: TransformedPiece(
+                pieces[p["id"]], Transformation.from_dict(p["transformation"])
+            )
             for p in config["transformed_pieces"]
         }
         return cls(

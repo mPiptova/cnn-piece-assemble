@@ -6,8 +6,8 @@ import numpy as np
 
 from geometry import Transformation
 from piece_assemble.cluster import Cluster, ClusterScorerBase
-from piece_assemble.matching.match import CompactMatch
-from piece_assemble.piece import TransformedPiece
+from piece_assemble.matching.match import Match
+from piece_assemble.piece import Piece, TransformedPiece
 
 Graph = np.ndarray[bool]
 
@@ -29,7 +29,7 @@ class TransformationGraph:
             self._adj_matrix[self.idx_map[j], self.idx_map[i]] = True
 
     @classmethod
-    def from_matches(cls, matches: list[CompactMatch]) -> TransformationGraph:
+    def from_matches(cls, matches: list[Match]) -> TransformationGraph:
         transformation_dict = {}
         for match in matches:
             if match is None:
@@ -122,7 +122,7 @@ class TransformationGraph:
     def cycle_to_cluster(
         self,
         cycle: list[str],
-        pieces: dict[str, TransformedPiece],
+        pieces: dict[str, Piece],
         scorer: ClusterScorerBase,
         config: dict,
     ) -> Cluster | None:

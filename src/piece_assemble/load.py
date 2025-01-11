@@ -6,11 +6,9 @@ from typing import TYPE_CHECKING
 
 from geometry import Transformation
 from image import load_bin_img, load_img
-from piece_assemble.feature_extraction.dummy import DummyFeatureExtractor
 from piece_assemble.piece import Piece, TransformedPiece
 
 if TYPE_CHECKING:
-    from piece_assemble.feature_extraction.base import FeatureExtractor
     from piece_assemble.types import BinImg, NpImage
 
 
@@ -53,7 +51,7 @@ def load_images(
     return img_ids, imgs, masks
 
 
-def load_pieces(path: str, feature_extractor: FeatureExtractor) -> dict[str, Piece]:
+def load_pieces(path: str) -> dict[str, Piece]:
     """
     Load pieces from the given directory.
 
@@ -70,9 +68,7 @@ def load_pieces(path: str, feature_extractor: FeatureExtractor) -> dict[str, Pie
     img_ids, imgs, masks = load_images(path)
 
     return {
-        img_ids[i]: Piece.from_image(
-            img_ids[i], imgs[i], masks[i], feature_extractor, 0
-        )
+        img_ids[i]: Piece.from_image(img_ids[i], imgs[i], masks[i], 0)
         for i in range(len(img_ids))
     }
 
@@ -98,7 +94,7 @@ def load_puzzle(
     neighbors
         A list of lists of neighbor piece names.
     """
-    pieces = load_pieces(path, DummyFeatureExtractor(background_val))
+    pieces = load_pieces(path)
 
     with open(os.path.join(path, "pieces.json"), "r") as f:
         pieces_json = json.load(f)

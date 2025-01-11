@@ -9,7 +9,6 @@ from shapely import transform
 
 from geometry import Transformation, fit_transform, icp
 from piece_assemble.cluster import Cluster
-from piece_assemble.neighbors import ComplexityNeighborClassifier
 from piece_assemble.piece import TransformedPiece
 
 if TYPE_CHECKING:
@@ -17,7 +16,7 @@ if TYPE_CHECKING:
     from piece_assemble.piece import Piece
 
 
-class Match:
+class CandidateMatch:
     """Represents one match between two pieces."""
 
     def __init__(
@@ -96,7 +95,7 @@ class Match:
         icp_max_iters: int = 30,
         icp_min_change: float = 0.5,
         check_consistency: bool = False,
-    ) -> CompactMatch | None:
+    ) -> Match | None:
         """Returns more precise Match or None if invalid.
 
         Parameters
@@ -111,7 +110,7 @@ class Match:
         Returns
         -------
         match
-            Match with more accurate transformation estimation or None, if invalid.
+            Match with accurate transformation estimation or None, if invalid.
         """
         transformation = self.initial_transformation
 
@@ -141,11 +140,11 @@ class Match:
             if not np.any(matching):
                 return None
 
-        return CompactMatch(self.id1, self.id2, transformation)
+        return Match(self.id1, self.id2, transformation)
 
 
 @dataclass
-class CompactMatch:
+class Match:
     """Compact match representation used to save time in parallel processing"""
 
     id1: str
@@ -186,10 +185,6 @@ class CompactMatch:
             self.id1: TransformedPiece(piece1, self.transformation),
             self.id2: TransformedPiece(piece2, Transformation.identity()),
         }
-
-        cluster_config["neighbor_classifier"] = ComplexityNeighborClassifier(
-            cluster_config["border_dist_tol"]
-        )
 
         return Cluster(
             pieces,
