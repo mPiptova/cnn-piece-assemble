@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from geometry import get_common_contour_idxs
 from piece_assemble.contours import smooth_contours
+from piece_assemble.geometry import get_common_contour_idxs
 from piece_assemble.utils import longest_continuous_subsequence
 
 if TYPE_CHECKING:

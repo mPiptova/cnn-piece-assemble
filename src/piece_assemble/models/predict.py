@@ -6,12 +6,12 @@ import torch
 from skimage.transform import hough_line, hough_line_peaks
 from torch import nn
 
-from geometry import draw_line_polar
 from piece_assemble.dataset import (
     BatchCollator,
     get_img_patches_from_piece,
     preprocess_piece_data,
 )
+from piece_assemble.geometry import draw_line_polar
 from piece_assemble.matching.match import CandidateMatch, Match
 from piece_assemble.models import EmbeddingUnet, PairNetwork
 from piece_assemble.piece import Piece

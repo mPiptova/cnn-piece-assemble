@@ -1,10 +1,12 @@
+from typing import Sequence
+
 import numpy as np
 from perlin_noise import PerlinNoise
 from skimage.measure import label
 from skimage.morphology import binary_erosion, disk
 
 from piece_assemble.piece import Piece, TransformedPiece
-from puzzle_generator.plane_division import crop_piece_img
+from piece_assemble.puzzle_generator.plane_division import crop_piece_img
 
 
 def generate_noise_image(shape: tuple[int, int], octaves: int = 30) -> np.ndarray:
@@ -107,7 +109,7 @@ def apply_random_erosion(
 def apply_random_erosion_to_pieces(
     pieces: list[TransformedPiece],
     strength: int = 6,
-) -> list[Piece]:
+) -> Sequence[Piece]:
     """Apply random erosion to the mask, simulating imperfectly matching puzzle.
 
     Parameters
@@ -138,10 +140,6 @@ def apply_random_erosion_to_pieces(
             piece.img_avg,
             eroded_mask,
             piece.contour,
-            piece.feature_extractor,
-            piece.features,
-            piece.holes,
-            piece.hole_features,
             piece.polygon,
         )
 

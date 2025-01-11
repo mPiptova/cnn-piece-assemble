@@ -9,9 +9,9 @@ import numpy as np
 from skimage.transform import rescale
 from tqdm import tqdm
 
-from image import np_to_pil
 from piece_assemble.cluster import Cluster
 from piece_assemble.cycles import TransformationGraph
+from piece_assemble.image import np_to_pil
 from piece_assemble.models import PairNetwork
 from piece_assemble.models.predict import get_matches
 

@@ -9,8 +9,8 @@ from skimage.filters import rank
 from skimage.measure import approximate_polygon
 from skimage.morphology import diamond, dilation, disk, erosion
 
-from geometry import Transformation
 from piece_assemble.contours import extract_contours, smooth_contours
+from piece_assemble.geometry import Transformation
 from piece_assemble.types import Points
 
 if TYPE_CHECKING:

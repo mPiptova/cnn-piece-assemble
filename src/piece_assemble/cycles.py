@@ -4,8 +4,8 @@ from typing import Generator
 
 import numpy as np
 
-from geometry import Transformation
 from piece_assemble.cluster import Cluster, ClusterScorerBase
+from piece_assemble.geometry import Transformation
 from piece_assemble.matching.match import Match
 from piece_assemble.piece import Piece, TransformedPiece
 
