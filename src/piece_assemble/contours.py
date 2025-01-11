@@ -5,7 +5,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import argrelextrema
 
-from geometry import normalize_interval, point_to_line_dist, points_dist
+from piece_assemble.geometry import normalize_interval, point_to_line_dist, points_dist
 from piece_assemble.types import BinImg, Points
 
 

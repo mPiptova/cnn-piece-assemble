@@ -39,16 +39,16 @@ import os
 
 from PIL import Image
 
-from image import np_to_pil, pil_to_np
 from piece_assemble.cluster import Cluster, DummyClusterScorer
+from piece_assemble.image import np_to_pil, pil_to_np
 from piece_assemble.neighbors import BorderLengthNeighborClassifier
 from piece_assemble.piece import TransformedPiece
-from piece_assemble.types import NpImage
-from puzzle_generator.plane_division import (
+from piece_assemble.puzzle_generator.plane_division import (
     apply_division_to_image,
     get_random_division,
     reduce_number_of_pieces,
 )
+from piece_assemble.types import NpImage
 
 
 def generate_puzzle(

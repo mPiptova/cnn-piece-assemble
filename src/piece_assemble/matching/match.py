@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from shapely import transform
 
-from geometry import Transformation, fit_transform, icp
 from piece_assemble.cluster import Cluster
+from piece_assemble.geometry import Transformation, fit_transform, icp
 from piece_assemble.piece import TransformedPiece
 
 if TYPE_CHECKING:

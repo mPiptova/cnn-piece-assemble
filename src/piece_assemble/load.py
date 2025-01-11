@@ -4,8 +4,8 @@ import json
 import os
 from typing import TYPE_CHECKING
 
-from geometry import Transformation
-from image import load_bin_img, load_img
+from piece_assemble.geometry import Transformation
+from piece_assemble.image import load_bin_img, load_img
 from piece_assemble.piece import Piece, TransformedPiece
 
 if TYPE_CHECKING:

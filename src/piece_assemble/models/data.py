@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from skimage.morphology import dilation
 
-from geometry import get_common_contour_idxs
+from piece_assemble.geometry import get_common_contour_idxs
 from piece_assemble.types import Points
 from piece_assemble.visualization import draw_contour
 

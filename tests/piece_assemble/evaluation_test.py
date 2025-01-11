@@ -1,10 +1,10 @@
 import pytest
 
-from geometry import Transformation
 from piece_assemble.evaluation import (
     _fixed_position_correct_piece_ratio,
     correct_piece_ratio,
 )
+from piece_assemble.geometry import Transformation
 
 
 @pytest.mark.parametrize(

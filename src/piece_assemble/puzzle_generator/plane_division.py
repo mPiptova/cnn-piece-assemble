@@ -4,10 +4,9 @@ from skimage.morphology import dilation, disk
 from skimage.segmentation import flood_fill
 from skimage.transform import rotate
 
-from geometry import Transformation
-from piece_assemble.feature_extraction.dummy import DummyFeatureExtractor
+from piece_assemble.geometry import Transformation
 from piece_assemble.piece import Piece, TransformedPiece
-from puzzle_generator.lines import (
+from piece_assemble.puzzle_generator.lines import (
     draw_curve,
     generate_random_line,
     interpolate_curve,
@@ -356,7 +355,7 @@ def apply_division_to_image(
             piece_img, mask, transformation
         )
 
-        piece = Piece.from_image(name, piece_img, mask, DummyFeatureExtractor(), 0)
+        piece = Piece.from_image(name, piece_img, mask, 0)
         transformed_piece = TransformedPiece(piece, transformation.inverse())
         pieces.append(transformed_piece)
 
