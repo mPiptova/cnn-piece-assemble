@@ -58,13 +58,11 @@ class Clustering:
         self,
         output_images_path: str | None,
         store_new_matches: bool = True,
-        store_old_matches: bool = False,
         store_trusted_clusters: bool = False,
     ) -> None:
 
         self._output_path = output_images_path
         self._store_new_matches = store_new_matches
-        self._store_old_matches = store_old_matches
         self._store_trusted_clusters = store_trusted_clusters
 
         if output_images_path is None:
@@ -110,6 +108,7 @@ class Clustering:
                 self.cluster_config["border_dist_tol"],
                 icp_max_iters=icp_max_iters,
                 icp_min_change=icp_min_change,
+                check_consistency=True,
             )
             if verified_match is not None:
                 self.all_matches.append(verified_match)

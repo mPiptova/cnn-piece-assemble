@@ -9,7 +9,7 @@ from skimage.filters import rank
 from skimage.measure import approximate_polygon
 from skimage.morphology import diamond, dilation, disk, erosion
 
-from piece_assemble.contours import extract_contours, smooth_contours
+from piece_assemble.contours import extract_contours
 from piece_assemble.geometry import Transformation
 from piece_assemble.types import Points
 
@@ -42,7 +42,6 @@ class Piece:
         name: str,
         img: NpImage,
         mask: BinImg,
-        sigma: float = 5,
         polygon_approximation_tolerance: float = 3,
         img_mean_window_r: int = 3,
     ) -> Piece:
@@ -56,9 +55,6 @@ class Piece:
             The image of the piece.
         mask
             The binary mask of the piece.
-        sigma
-            The standard deviation of the Gaussian kernel used for smoothing the
-            contours.
         polygon_approximation_tolerance
             The tolerance for the polygon approximation algorithm.
         img_mean_window_r
@@ -93,9 +89,7 @@ class Piece:
 
         # Dilate mask to compensate for natural erosion of pieces
         contours = extract_contours(dilation(mask, diamond(1)).astype("uint8"))
-        outline_contour = contours[0]
-
-        contour = smooth_contours(outline_contour, sigma)
+        contour = contours[0]
 
         polygon = cls._get_polygon_approximation(
             polygon_approximation_tolerance, contour
