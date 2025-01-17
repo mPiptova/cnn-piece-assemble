@@ -14,6 +14,7 @@ from piece_assemble.cycles import TransformationGraph
 from piece_assemble.image import np_to_pil
 from piece_assemble.models import PairNetwork
 from piece_assemble.models.predict import get_matches
+from piece_assemble.neighbors import BorderLengthNeighborClassifier
 
 if TYPE_CHECKING:
     from piece_assemble.cluster import ClusterScorer
@@ -81,8 +82,14 @@ class Clustering:
         icp_max_iters: int,
         icp_min_change: float,
         model: PairNetwork,
+        activation_threshold: float,
+        patience: int = 10,
     ) -> Cluster | None:
         self.cluster_config = cluster_config
+        self.cluster_config["neighbor_classifier"] = BorderLengthNeighborClassifier(
+            30, self.cluster_config["border_dist_tol"]
+        )
+
         self.model = model
 
         self.run(
@@ -90,10 +97,14 @@ class Clustering:
             trusted_cluster_config,
             icp_max_iters,
             icp_min_change,
+            activation_threshold,
+            patience,
         )
         return self.best_cluster
 
-    def _generate_matches(self, icp_max_iters: int, icp_min_change: float) -> None:
+    def _generate_matches(
+        self, icp_max_iters: int, icp_min_change: float, activation_threshold: float
+    ) -> None:
         if len(self.all_pair_clusters) > 0:
             return
 
@@ -101,9 +112,9 @@ class Clustering:
         self.all_matches = []
 
         piece_dict = {piece.name: piece for piece in self.pieces}
-        candidate_matches = get_matches(self.model, piece_dict, 0.7)
+        candidate_matches = get_matches(self.model, piece_dict, activation_threshold)
 
-        for candidate_match in tqdm(candidate_matches, desc="Finding matches"):
+        for candidate_match in tqdm(candidate_matches, desc="Verifying matches"):
             verified_match = candidate_match.verify(
                 self.cluster_config["border_dist_tol"],
                 icp_max_iters=icp_max_iters,
@@ -127,8 +138,10 @@ class Clustering:
         trusted_cluster_config: dict,
         icp_max_iters: int,
         icp_min_change: float,
+        activation_threshold: float,
+        patience: int = 20,
     ) -> None:
-        self._generate_matches(icp_max_iters, icp_min_change)
+        self._generate_matches(icp_max_iters, icp_min_change, activation_threshold)
 
         clusters_queue = self.all_pair_clusters.copy()
         if len(clusters_queue) < 10 * len(self.pieces):
@@ -139,14 +152,37 @@ class Clustering:
             lambda cluster: cluster_can_be_trusted(cluster, **trusted_cluster_config),
         )
 
-        for i in tqdm(range(self._i, self._i + n_iters)):
-            if self.assembled:
-                break
-            self._i = i + 1
-            self.run_iteration(
-                i,
-                clusters_queue,
-            )
+        self.clusters = self.trusted_clusters
+
+        last_update = self._i
+        last_clusters_scores = [cluster.score for cluster in self.clusters]
+
+        def _cluster_scores_match(scores1: list[float], scores2: list[float]) -> bool:
+            if len(scores1) != len(scores2):
+                return False
+            for s1, s2 in zip(scores1, scores2):
+                if s1 != s2:
+                    return False
+            return True
+
+        with tqdm(total=n_iters, desc="Assembling") as pbar:
+            for i in range(self._i, self._i + n_iters):
+                if self.assembled:
+                    break
+                self._i = i + 1
+                self.run_iteration(
+                    i,
+                    clusters_queue,
+                )
+
+                cluster_scores = [cluster.score for cluster in self.clusters]
+                if not _cluster_scores_match(last_clusters_scores, cluster_scores):
+                    last_update = self._i
+                    last_clusters_scores = cluster_scores
+                elif self._i - last_update > patience:
+                    break
+
+                pbar.update(1)
 
     def get_cycles(self, verified_matches: list[Match]) -> list[Cluster]:
         graph = TransformationGraph.from_matches(verified_matches)
