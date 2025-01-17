@@ -8,5 +8,3 @@ Points = np.ndarray[float]
 BinImg = np.ndarray[bool]
 NpImage = np.ndarray[float]
 PilImage = Image
-
-Interval = tuple[int, int] | tuple[float, float]
