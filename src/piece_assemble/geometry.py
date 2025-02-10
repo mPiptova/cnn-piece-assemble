@@ -234,15 +234,16 @@ class Transformation:
         translation_tol: float = 21,
     ) -> bool:
         return (
-            abs(self.rotation_angle - other.rotation_angle) <= angle_tol
-            and np.linalg.norm(self.translation - other.translation) <= translation_tol
-        )
+            abs(self.rotation_angle - other.rotation_angle) % (2 * np.pi) <= angle_tol
+            or abs(self.rotation_angle - other.rotation_angle - 2 * np.pi) % (2 * np.pi)
+            <= angle_tol
+        ) and np.linalg.norm(self.translation - other.translation) <= translation_tol
 
     def to_dict(self) -> dict:
         """Return the transformation parameters as a dictionary."""
         return {
-            "rotation_angle": self.rotation_angle,
-            "translation": list(self.translation),
+            "rotation_angle": float(self.rotation_angle),
+            "translation": list(self.translation.astype(float)),
         }
 
     @classmethod
