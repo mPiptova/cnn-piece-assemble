@@ -164,7 +164,7 @@ class EmbeddingUnet(nn.Module):
 
     def initialize(self) -> None:
         for layer in self.transpositions:
-            nn.init.xavier_uniform(layer.weight.data)
+            nn.init.xavier_uniform_(layer.weight.data)
             layer.bias.data.zero_()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
