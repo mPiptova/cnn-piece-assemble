@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from skimage.transform import hough_line, hough_line_peaks
 from torch import nn
+from tqdm import tqdm
 
 from piece_assemble.dataset import (
     BatchCollator,
@@ -13,9 +14,171 @@ from piece_assemble.dataset import (
 )
 from piece_assemble.geometry import draw_line_polar
 from piece_assemble.matching.match import CandidateMatch, Match
-from piece_assemble.models import EmbeddingUnet, PairNetwork
+from piece_assemble.models import EmbeddingUnet, PairNetwork, load_model
 from piece_assemble.piece import Piece
 from piece_assemble.types import NpImage
+
+
+class Embeddings:
+    """A class to store embeddings for all pieces."""
+
+    def __init__(self, embeddings: tuple[dict[str, np.ndarray], dict[str, np.ndarray]]):
+        self._embeddings = embeddings
+
+    def get_similarity_matrix(self, piece_id1: str, piece_id2: str) -> np.ndarray:
+        """Get the similarity matrix between two pieces.
+
+        Parameters
+        ----------
+        piece_id1
+            The id of the first piece.
+        piece_id2
+            The id of the second piece.
+
+        Returns
+        -------
+        np.ndarray
+            The similarity matrix between the two pieces.
+        """
+        return embeddings_to_similarity_matrix(
+            self._embeddings[0][piece_id1], self._embeddings[1][piece_id2]
+        )
+
+
+class EnsembleEmbeddings(Embeddings):
+    """A class to store ensemble embeddings for all pieces."""
+
+    def __init__(self, embeddings: list[tuple[dict[str, Any], dict[str, Any]]]):
+        self._embeddings = embeddings
+
+    def get_similarity_matrix(self, piece_id1: str, piece_id2: str) -> np.ndarray:
+        """Get the similarity matrix between two pieces.
+
+        Parameters
+        ----------
+        piece_id1
+            The id of the first piece.
+        piece_id2
+            The id of the second piece.
+
+        Returns
+        -------
+        np.ndarray
+            The similarity matrix between the two pieces.
+        """
+        matrices = [
+            embeddings_to_similarity_matrix(
+                self._embeddings[i][0][piece_id1], self._embeddings[i][1][piece_id2]
+            )
+            for i in range(len(self._embeddings))
+        ]
+        matrix = np.ones_like(matrices[0])
+        for m in matrices:
+            matrix *= m
+        return matrix
+
+
+class Predictor:
+    """A class to predict matches."""
+
+    def __init__(self, model: PairNetwork, activation_threshold: float):
+        self.model = model
+        self.activation_threshold = activation_threshold
+
+    def predict_matches(
+        self,
+        pieces: Mapping[str, Piece],
+        all_pairs: list[tuple[str, str]] | list[list[str]] | None = None,
+    ) -> list[CandidateMatch]:
+        """Get candidate matches between all pieces in the puzzle.
+
+        Parameters
+        ----------
+        pieces
+            The pieces in the puzzle.
+        all_pairs
+            The pairs of pieces to check. If None, all pairs will be checked.
+            Can be useful when only recall is needed.
+
+        Returns
+        -------
+        list[CandidateMatch]
+            The candidate matches between all pieces in the puzzle.
+        """
+        embeddings = self.predict_embeddings(pieces)
+        if all_pairs is None:
+            all_pairs = set(
+                [tuple(sorted((x, y))) for x, y in list(combinations(pieces, 2))]
+            )
+        matches = []
+
+        for p1, p2 in tqdm(all_pairs, desc="Finding candidate matches"):
+            output = embeddings.get_similarity_matrix(p1, p2)
+
+            piece1 = pieces[p1].to_piece()
+            piece2 = pieces[p2].to_piece()
+
+            match = model_output_to_candidate_match(
+                piece1, piece2, output, self.activation_threshold
+            )
+
+            if match is not None:
+                matches.append(match)
+
+        return matches
+
+    def predict_embeddings(self, pieces: Mapping[str, Piece]) -> Embeddings:
+        """Get embeddings for all pieces in the puzzle."""
+        return Embeddings(compute_piece_embeddings(self.model, pieces))
+
+
+class EnsemblePredictor(Predictor):
+    """A class to predict matches using an ensemble of models."""
+
+    def __init__(self, models: list[PairNetwork], activation_threshold: float):
+        self.models = models
+        self.activation_threshold = activation_threshold
+
+    def predict_embeddings(self, pieces: Mapping[str, Piece]) -> EnsembleEmbeddings:
+        """Get embeddings for all pieces in the puzzle.
+
+        Parameters
+        ----------
+        pieces
+            The pieces in the puzzle.
+        """
+
+        embeddings = [compute_piece_embeddings(model, pieces) for model in self.models]
+        return EnsembleEmbeddings(embeddings)
+
+
+def load_predictor(
+    predictor_id: str, path: str, activation_threshold: float
+) -> Predictor:
+    """Load a predictor.
+
+    Parameters
+    ----------
+    predictor_id
+        The id of the predictor. Either the ID of a single model, or it has the form
+        "Ensemble-model1-model2-model3".
+    path
+        The path where all models are stored.
+    activation_threshold
+        The activation threshold for the predictor.
+
+    Returns
+    -------
+    Predictor
+    """
+
+    if predictor_id.startswith("Ensemble"):
+        model_ids = predictor_id.split("-")[1:]
+        models = [load_model(model_id, path) for model_id in model_ids]
+        return EnsemblePredictor(models, activation_threshold)
+
+    model = load_model(predictor_id, path)
+    return Predictor(model, activation_threshold)
 
 
 def model_output_to_candidate_match(
@@ -158,7 +321,7 @@ def detect_lines(img: NpImage) -> tuple[np.ndarray, np.ndarray]:
     return clean_idxs1, clean_idxs2
 
 
-def embeddings_to_correspondence_matrix(
+def embeddings_to_similarity_matrix(
     embedding_first: np.ndarray, embedding_second: np.ndarray
 ) -> np.ndarray:
     output = embedding_first.transpose(1, 0) @ embedding_second
@@ -167,35 +330,3 @@ def embeddings_to_correspondence_matrix(
     output = output[:, ::-1]
 
     return output
-
-
-def get_matches(
-    model: PairNetwork,
-    pieces: dict[str, Piece],
-    activation_threshold: float,
-) -> list[CandidateMatch]:
-
-    embeddings_first, embeddings_second = compute_piece_embeddings(model, pieces)
-
-    all_pairs = set([tuple(sorted((x, y))) for x, y in list(combinations(pieces, 2))])
-    matches = []
-
-    for p1, p2 in all_pairs:
-        embedding1 = embeddings_first[p1]
-        embedding2 = embeddings_second[p2]
-
-        output = embeddings_to_correspondence_matrix(embedding1, embedding2)
-
-        piece1 = pieces[p1]
-        piece2 = pieces[p2]
-        piece1 = piece1.transform(piece2.transformation.inverse())
-        piece2 = piece2.transform(piece2.transformation.inverse())
-
-        match = model_output_to_candidate_match(
-            piece1, piece2, output, activation_threshold
-        )
-
-        if match is not None:
-            matches.append(match)
-
-    return matches

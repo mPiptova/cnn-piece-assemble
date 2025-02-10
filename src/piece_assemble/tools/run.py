@@ -13,7 +13,7 @@ from piece_assemble.cluster import EmbeddingClusterScorer
 from piece_assemble.clustering import Clustering
 from piece_assemble.config import load_config
 from piece_assemble.load import load_images
-from piece_assemble.models import load_model
+from piece_assemble.models.predict import load_predictor
 from piece_assemble.piece import Piece
 
 if __name__ == "__main__":
@@ -32,11 +32,16 @@ if __name__ == "__main__":
         )
         for img_name, img, mask in zip(img_ids, imgs, masks)
     ]
+    pieces_dict = {piece.name: piece for piece in pieces}
 
-    model = load_model(config["model"]["id"], config["model"]["directory"])
+    predictor = load_predictor(
+        config["model"]["id"],
+        config["model"]["directory"],
+        config["model"]["activation_threshold"],
+    )
 
     cluster_scorer = EmbeddingClusterScorer(
-        model, {piece.name: piece for piece in pieces}
+        predictor.predict_embeddings(pieces_dict), pieces_dict
     )
     clustering = Clustering(pieces, cluster_scorer)
 
@@ -45,6 +50,5 @@ if __name__ == "__main__":
         **config["clustering"],
         cluster_config=config["cluster"],
         trusted_cluster_config=config["trusted_cluster"],
-        model=model,
-        activation_threshold=config["model"]["activation_threshold"],
+        predictor=predictor,
     )

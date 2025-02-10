@@ -21,7 +21,7 @@ from piece_assemble.visualization import draw_contour
 
 if TYPE_CHECKING:
 
-    from piece_assemble.models import PairNetwork
+    from piece_assemble.models.embeddings import Embeddings
     from piece_assemble.neighbors import NeighborClassifierBase
     from piece_assemble.piece import TransformedPiece
     from piece_assemble.types import Points
@@ -42,35 +42,26 @@ class DummyClusterScorer(ClusterScorerBase):
 class EmbeddingClusterScorer(ClusterScorerBase):
     def __init__(
         self,
-        model: PairNetwork,
+        embeddings: Embeddings,
         pieces: dict[str, TransformedPiece],
         activation_threshold: float = 0.7,
     ) -> None:
-        from piece_assemble.models.predict import compute_piece_embeddings
-
         super().__init__()
-        self.embeddings_first, self.embeddings_second = compute_piece_embeddings(
-            model, pieces
-        )
+        self.embeddings = embeddings
         self.activation_threshold = activation_threshold
         self.min_piece_len = min([len(p.contour) for p in pieces.values()])
 
     def __call__(self, cluster: Cluster) -> float:
-        from piece_assemble.models.predict import embeddings_to_correspondence_matrix
-
         score = 0
         for neighbor_pair in cluster.get_neighbor_pairs():
             neighbor_pair = list(neighbor_pair)
-            matrix = embeddings_to_correspondence_matrix(
-                self.embeddings_first[neighbor_pair[0]],
-                self.embeddings_second[neighbor_pair[1]],
-            )
+            matrix = self.embeddings.get_similarity_matrix(*neighbor_pair)
 
             idxs1, idxs2 = cluster.get_match_border_idxs(*neighbor_pair)
             if idxs1 is None or idxs2 is None:
                 continue
             weight = len(idxs1) / self.min_piece_len
-            score += (matrix[idxs1, idxs2].sum() / len(idxs1)) * weight**0.5
+            score += (matrix[idxs1, idxs2].sum() / len(idxs1)) * weight**0.25
 
         return score
 

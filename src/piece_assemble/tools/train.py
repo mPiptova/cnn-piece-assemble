@@ -86,13 +86,10 @@ if __name__ == "__main__":
         collate_fn=BatchCollator(model.padding, 2 ** config["model"]["depth"]),
     )
 
-    test_examples = ["100_1952.5.34", "50_1942.8.38", "50_1943.3.4716.q"]
-    puzzles = [
-        load_puzzle(
-            f"/root/rir/project/data/val/{example}/", config["model"]["background_val"]
-        )
-        for example in test_examples
-    ]
+    val_config = config["val"]
+    puzzles = [load_puzzle(val_puzzle) for val_puzzle in config["val"]["puzzles"]]
+
+    val_config["puzzles"] = puzzles
 
     writer = SummaryWriter(os.path.join(args.tensorboard_path, model_id))
     print(f"Training model {model_id}")
@@ -106,7 +103,7 @@ if __name__ == "__main__":
         val_loader,
         config["train"]["epochs"],
         writer,
+        val_config,
         0,
-        puzzles=puzzles,
         save_path=args.checkpoint_path,
     )

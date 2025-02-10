@@ -5,8 +5,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from piece_assemble.models import PairNetwork
-from piece_assemble.models.eval import eval_puzzles
-from piece_assemble.piece import TransformedPiece
+from piece_assemble.models.eval import Predictor, eval_puzzles
 
 
 class MaskedBCEWithLogitsLoss(torch.nn.BCEWithLogitsLoss):
@@ -162,8 +161,8 @@ def train_model(
     val_loader: torch.utils.data.DataLoader,
     epochs: int,
     tb_writer: torch.utils.tensorboard.SummaryWriter,
+    val_config: dict,
     start_epoch: int = 0,
-    puzzles: list[tuple[dict[str, TransformedPiece], list[list[str]]]] | None = None,
     save_path: str | None = None,
 ) -> None:
     if save_path is None:
@@ -189,21 +188,22 @@ def train_model(
         tb_writer.add_scalar("Validation F1", eval_results["f1"], epoch_number)
         tb_writer.flush()
 
-        if puzzles is not None:
-            metrics = eval_puzzles(model, puzzles, 0.8)
-            tb_writer.add_scalar(
-                "Validation Piece-Level Precision", metrics["precision"], epoch_number
-            )
-            tb_writer.add_scalar(
-                "Validation Piece-Level Recall", metrics["recall"], epoch_number
-            )
-            tb_writer.add_scalar(
-                "Validation Piece-Level F1", metrics["f1"], epoch_number
-            )
-            tb_writer.add_scalar("Validation Missed", metrics["missed"], epoch_number)
-            tb_writer.add_scalar("Validation Wrong", metrics["wrong"], epoch_number)
-            tb_writer.add_scalar("Validation Extra", metrics["extra"], epoch_number)
-            tb_writer.flush()
+        metrics = eval_puzzles(
+            Predictor(model, val_config["threshold"]),
+            val_config["puzzles"],
+            val_config["recall_only"],
+        )
+        tb_writer.add_scalar(
+            "Validation Piece-Level Precision", metrics["precision"], epoch_number
+        )
+        tb_writer.add_scalar(
+            "Validation Piece-Level Recall", metrics["recall"], epoch_number
+        )
+        tb_writer.add_scalar("Validation Piece-Level F1", metrics["f1"], epoch_number)
+        tb_writer.add_scalar("Validation Missed", metrics["missed"], epoch_number)
+        tb_writer.add_scalar("Validation Wrong", metrics["wrong"], epoch_number)
+        tb_writer.add_scalar("Validation Extra", metrics["extra"], epoch_number)
+        tb_writer.flush()
 
         if metrics["recall"] > best_f1:
             best_f1 = metrics["recall"]

@@ -12,12 +12,11 @@ from tqdm import tqdm
 from piece_assemble.cluster import Cluster
 from piece_assemble.cycles import TransformationGraph
 from piece_assemble.image import np_to_pil
-from piece_assemble.models import PairNetwork
-from piece_assemble.models.predict import get_matches
+from piece_assemble.models.predict import Predictor
 from piece_assemble.neighbors import BorderLengthNeighborClassifier
 
 if TYPE_CHECKING:
-    from piece_assemble.cluster import ClusterScorer
+    from piece_assemble.cluster import ClusterScorerBase
     from piece_assemble.matching.match import Match
     from piece_assemble.piece import Piece
 
@@ -28,7 +27,7 @@ class Clustering:
     def __init__(
         self,
         pieces: list[Piece],
-        cluster_scorer: ClusterScorer,
+        cluster_scorer: ClusterScorerBase,
     ) -> None:
         self.pieces = pieces
         self.cluster_scorer = cluster_scorer
@@ -81,8 +80,7 @@ class Clustering:
         cluster_config: dict,
         icp_max_iters: int,
         icp_min_change: float,
-        model: PairNetwork,
-        activation_threshold: float,
+        predictor: Predictor,
         patience: int = 10,
     ) -> Cluster | None:
         self.cluster_config = cluster_config
@@ -90,21 +88,18 @@ class Clustering:
             30, self.cluster_config["border_dist_tol"]
         )
 
-        self.model = model
+        self.predictor = predictor
 
         self.run(
             n_iters,
             trusted_cluster_config,
             icp_max_iters,
             icp_min_change,
-            activation_threshold,
             patience,
         )
         return self.best_cluster
 
-    def _generate_matches(
-        self, icp_max_iters: int, icp_min_change: float, activation_threshold: float
-    ) -> None:
+    def _generate_matches(self, icp_max_iters: int, icp_min_change: float) -> None:
         if len(self.all_pair_clusters) > 0:
             return
 
@@ -112,7 +107,7 @@ class Clustering:
         self.all_matches = []
 
         piece_dict = {piece.name: piece for piece in self.pieces}
-        candidate_matches = get_matches(self.model, piece_dict, activation_threshold)
+        candidate_matches = self.predictor.predict_matches(piece_dict)
 
         for candidate_match in tqdm(candidate_matches, desc="Verifying matches"):
             verified_match = candidate_match.verify(
@@ -138,10 +133,9 @@ class Clustering:
         trusted_cluster_config: dict,
         icp_max_iters: int,
         icp_min_change: float,
-        activation_threshold: float,
         patience: int = 20,
     ) -> None:
-        self._generate_matches(icp_max_iters, icp_min_change, activation_threshold)
+        self._generate_matches(icp_max_iters, icp_min_change)
 
         clusters_queue = self.all_pair_clusters.copy()
         if len(clusters_queue) < 10 * len(self.pieces):
