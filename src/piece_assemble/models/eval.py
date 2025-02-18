@@ -3,6 +3,7 @@ from typing import Mapping
 
 from rustworkx import PyGraph, connected_components
 
+from piece_assemble.geometry import Transformation
 from piece_assemble.models.predict import Match, Predictor
 from piece_assemble.piece import TransformedPiece
 
@@ -22,6 +23,15 @@ def eval_assembly_potential(matches: list[Match], n_pieces: int) -> float:
 
     components = connected_components(graph)
     return max([len(component) for component in components]) / n_pieces
+
+
+def _get_gold_transformation(
+    match: Match, pieces: Mapping[str, TransformedPiece]
+) -> Transformation:
+    piece1 = pieces[match.id1]
+    piece2 = pieces[match.id2]
+
+    return piece1.transform(piece2.transformation.inverse()).transformation
 
 
 def eval_puzzle(
@@ -55,13 +65,10 @@ def eval_puzzle(
 
         pred_neighbors_set.add(tuple(sorted((match.id1, match.id2))))
 
-        piece1 = pieces[match.id1]
-        piece2 = pieces[match.id2]
-
-        piece1 = piece1.transform(piece2.transformation.inverse())
+        gold_transformation = _get_gold_transformation(match, pieces)
 
         if tuple(sorted((match.id1, match.id2))) in neighbors_set:
-            if match.transformation.is_close(piece1.transformation):
+            if match.transformation.is_close(gold_transformation):
                 tp += 1
                 tp_matches.append(match)
             else:
