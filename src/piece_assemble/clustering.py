@@ -141,10 +141,14 @@ class Clustering:
         if len(clusters_queue) < 10 * len(self.pieces):
             cycles = self.get_cycles(self.all_matches)
             self.update_trusted_clusters(cycles, lambda _: True)
-        clusters_queue = self.update_trusted_clusters(
-            clusters_queue,
-            lambda cluster: cluster_can_be_trusted(cluster, **trusted_cluster_config),
-        )
+
+        if trusted_cluster_config["use_trusted_clusters"]:
+            clusters_queue = self.update_trusted_clusters(
+                clusters_queue,
+                lambda cluster: cluster_can_be_trusted(
+                    cluster, **trusted_cluster_config
+                ),
+            )
 
         self.clusters = self.trusted_clusters
 
