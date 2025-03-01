@@ -5,7 +5,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from piece_assemble.models import PairNetwork
-from piece_assemble.models.eval import Predictor, eval_puzzles
+from piece_assemble.models.eval import eval_puzzles
+from piece_assemble.models.predict import Predictor
 
 
 class MaskedBCEWithLogitsLoss(torch.nn.BCEWithLogitsLoss):
