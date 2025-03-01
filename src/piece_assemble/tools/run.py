@@ -54,9 +54,11 @@ if __name__ == "__main__":
 
     config["cluster"]["neighbor_classifier"] = neighbor_classifier
     clustering.set_logging(**config["logging"])
-    clustering(
+    clusters = clustering(
         **config["clustering"],
         cluster_config=config["cluster"],
         trusted_cluster_config=config["trusted_cluster"],
         predictor=predictor,
     )
+    cluster_dicts = [cluster.to_dict() for cluster in clusters]
+    print(cluster_dicts)
