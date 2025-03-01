@@ -92,7 +92,7 @@ class Clustering:
             icp_min_change,
             patience,
         )
-        return self.best_cluster
+        return self.clusters
 
     def _generate_matches(self, icp_max_iters: int, icp_min_change: float) -> None:
         if len(self.all_pair_clusters) > 0:
