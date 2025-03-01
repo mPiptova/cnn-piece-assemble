@@ -276,7 +276,9 @@ class Clustering:
             self.clusters + self.trusted_clusters, [new_cluster]
         )
 
-        self.clusters = self.recombine(self.clusters)
+        self.clusters = self.recombine(
+            self.clusters + list(self.used_pair_clusters.values())
+        )
         self.clusters.sort(key=lambda cluster: cluster.score, reverse=True)
 
         self.store_iteration(f"{i}iter", self.clusters)
