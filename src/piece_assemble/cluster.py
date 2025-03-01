@@ -16,7 +16,10 @@ from skimage.morphology import erosion
 from skimage.transform import rotate
 
 from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
-from piece_assemble.neighbors import get_border_complexity
+from piece_assemble.neighbors import (
+    BorderLengthNeighborClassifier,
+    get_border_complexity,
+)
 from piece_assemble.visualization import draw_contour
 
 if TYPE_CHECKING:
@@ -158,6 +161,17 @@ class Cluster:
         if len(border) == 0:
             return []
         return np.concatenate(border)
+
+    @classmethod
+    def get_default_config(cls) -> dict:
+        cluster_config = {
+            "border_dist_tol": 5,
+            "self_intersection_tol": 0.01,
+            "rotation_tol": 0.17,
+            "translation_tol": 30,
+            "neighbor_classifier": BorderLengthNeighborClassifier(15, 5),
+        }
+        return cluster_config
 
     @cached_property
     def rel_border_length(self) -> float:
