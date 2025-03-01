@@ -313,11 +313,6 @@ class Clustering:
         if cluster1.piece_ids.isdisjoint(cluster2.piece_ids):
             return None
 
-        if cluster1.piece_ids.issubset(
-            cluster2.piece_ids
-        ) or cluster2.piece_ids.issubset(cluster1.piece_ids):
-            return None
-
         if finetune_iters is None:
             finetune_iters = 5
 
