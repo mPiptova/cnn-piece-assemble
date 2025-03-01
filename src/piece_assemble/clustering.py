@@ -482,6 +482,7 @@ class Clustering:
                 new_clusters_added = False
 
         clusters = self.apply_trusted_clusters(clusters)
+        clusters = self.cluster_selection(clusters)
         if len(clusters) == 0:
             return self.trusted_clusters
         return clusters
@@ -501,25 +502,19 @@ class Clustering:
         """
         clusters = clusters + self.trusted_clusters
         clusters.sort(key=lambda cluster: cluster.score, reverse=True)
-        clusters_by_piece = {key: [] for key in self.all_ids}
+        selected_clusters = []
+        included_ids = set()
 
-        for i, cluster in enumerate(clusters):
-            for piece_id in cluster.piece_ids:
-                clusters_by_piece[piece_id].append(i)
-
-        selected_cluster_idxs = set()
-
-        for piece_id, cluster_list in clusters_by_piece.items():
-            if len(cluster_list) == 0:
+        for cluster in clusters:
+            if len(cluster.piece_ids.intersection(included_ids)) == len(
+                cluster.piece_ids
+            ):
                 continue
-            new_i = cluster_list.pop(0)
 
-            if new_i is not None:
-                selected_cluster_idxs.add(new_i)
+            selected_clusters.append(cluster)
+            included_ids.update(cluster.piece_ids)
 
-        selection = [clusters[i] for i in selected_cluster_idxs]
-        selection.sort(key=lambda cluster: cluster.score, reverse=True)
-        return selection
+        return selected_clusters
 
     def apply_trusted_clusters(self, clusters: list[Cluster]) -> list[Cluster]:
         """Extend given clusters by trusted clusters.
