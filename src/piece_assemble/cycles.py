@@ -29,6 +29,20 @@ class TransformationGraph:
             self._adj_matrix[self.idx_map[j], self.idx_map[i]] = True
 
     @classmethod
+    def from_pair_clusters(cls, clusters: list[Cluster]) -> TransformationGraph:
+        transformation_dict = {}
+        for cluster in clusters:
+            id1, id2 = cluster.piece_ids
+            transformation = cluster.pieces[id1].transformation.compose(
+                cluster.pieces[id2].transformation.inverse()
+            )
+            transformation_dict[(id1, id2)] = transformation
+            transformation_dict[(id2, id1)] = transformation.inverse()
+
+        all_ids = list(set().union(*transformation_dict.keys()))
+        return cls(all_ids, transformation_dict)
+
+    @classmethod
     def from_matches(cls, matches: list[Match]) -> TransformationGraph:
         transformation_dict = {}
         for match in matches:

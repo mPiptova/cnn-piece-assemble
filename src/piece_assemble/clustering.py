@@ -14,7 +14,6 @@ from piece_assemble.image import np_to_pil
 
 if TYPE_CHECKING:
     from piece_assemble.cluster import Cluster, ClusterScorerBase
-    from piece_assemble.matching.match import Match
     from piece_assemble.models.predict import Predictor
     from piece_assemble.piece import Piece
 
@@ -131,10 +130,13 @@ class Clustering:
         patience: int = 20,
     ) -> None:
         self._generate_matches(icp_max_iters, icp_min_change)
-
         clusters_queue = self.all_pair_clusters.copy()
-        if len(clusters_queue) < 10 * len(self.pieces):
-            cycles = self.get_cycles(self.all_matches)
+
+        if len(trusted_cluster_config["consistent_cycle_lengths"]) > 0:
+            cycles = self.get_cycles(
+                clusters_queue[: min(10 * len(self.pieces), len(clusters_queue))],
+                trusted_cluster_config["consistent_cycle_lengths"],
+            )
             self.update_trusted_clusters(cycles, lambda _: True)
 
         if trusted_cluster_config["use_trusted_clusters"]:
@@ -177,9 +179,17 @@ class Clustering:
 
                 pbar.update(1)
 
-    def get_cycles(self, verified_matches: list[Match]) -> list[Cluster]:
-        graph = TransformationGraph.from_matches(verified_matches)
-        cycles = graph.find_consistent_cycles(3) + graph.find_consistent_cycles(4)
+    def get_cycles(
+        self, pair_clusters: list[Cluster], tested_lengths: list[int]
+    ) -> list[Cluster]:
+        graph = TransformationGraph.from_pair_clusters(pair_clusters)
+        cycles = []
+        for length in tested_lengths:
+            cycles += graph.find_consistent_cycles(length)
+
+        if len(cycles) == 0:
+            return []
+
         clusters = []
         pieces_dict = {piece.name: piece for piece in self.pieces}
         for cycle in cycles:
