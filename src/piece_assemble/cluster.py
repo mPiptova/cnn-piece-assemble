@@ -392,6 +392,12 @@ class Cluster:
                 was_fixed = True
                 cluster2.pieces.pop(key)
 
+        if not was_fixed and (
+            other.piece_ids.issubset(self.piece_ids)
+            or self.piece_ids.issubset(other.piece_ids)
+        ):
+            raise MergeError("Clusters are subsets of each other.")
+
         new_pieces = cluster1.pieces
         new_pieces.update(cluster2.pieces)
         new_cluster = Cluster(
