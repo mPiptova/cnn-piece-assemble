@@ -1,11 +1,18 @@
+from __future__ import annotations
+
 import math
-from typing import Mapping
+from typing import TYPE_CHECKING
 
 from rustworkx import PyGraph, connected_components
 
-from piece_assemble.geometry import Transformation
-from piece_assemble.models.predict import Match, Predictor
-from piece_assemble.piece import TransformedPiece
+from piece_assemble.models.metrics import Metric
+
+if TYPE_CHECKING:
+    from typing import Mapping
+
+    from piece_assemble.geometry import Transformation
+    from piece_assemble.models.predict import Match, Predictor
+    from piece_assemble.piece import TransformedPiece
 
 
 def eval_assembly_potential(matches: list[Match], n_pieces: int) -> float:
@@ -39,6 +46,7 @@ def eval_puzzle(
     pieces: Mapping[str, TransformedPiece],
     neighbors: list[list[str]],
     recall_only: bool = False,
+    additional_metrics: Mapping[str, Metric] = {},
 ) -> dict:
 
     neighbors_set = set([tuple(sorted((x, y))) for x, y in neighbors])
@@ -51,6 +59,8 @@ def eval_puzzle(
     missed = 0
     wrong = 0
     extra = 0
+
+    other_metrics = {key: 0 for key in additional_metrics.keys()}
 
     pairs = neighbors if recall_only else None
     matches = predictor.predict_matches(pieces, all_pairs=pairs)
@@ -71,6 +81,10 @@ def eval_puzzle(
             if match.transformation.is_close(gold_transformation):
                 tp += 1
                 tp_matches.append(match)
+                for key, metric in additional_metrics.items():
+                    other_metrics[key] += metric(
+                        match.transformation, gold_transformation
+                    )
             else:
                 wrong += 1
                 fn += 1
@@ -92,7 +106,9 @@ def eval_puzzle(
 
     lcc = eval_assembly_potential(tp_matches, len(pieces))
 
-    return {
+    other_metrics_results = {key: value / tp for key, value in other_metrics.items()}
+
+    basic_metrics = {
         "precision": precision,
         "recall": recall,
         "f1": f1,
@@ -108,11 +124,14 @@ def eval_puzzle(
         "fa": 1 if lcc == 1 else 0,
     }
 
+    return {**basic_metrics, **other_metrics_results}
+
 
 def eval_puzzles(
     predictor: Predictor,
     puzzles: list[tuple[dict[str, TransformedPiece], list[list[str]]]],
     recall_only: bool = False,
+    additional_metrics: dict[str, Metric] = {},
 ) -> dict[str, float]:
     aggr_metrics = {
         "precision": 0.0,
@@ -130,8 +149,13 @@ def eval_puzzles(
         "fa": 0,
     }
 
+    for key in additional_metrics.keys():
+        aggr_metrics[key] = 0
+
     for pieces, neighbors in puzzles:
-        metrics = eval_puzzle(predictor, pieces, neighbors, recall_only)
+        metrics = eval_puzzle(
+            predictor, pieces, neighbors, recall_only, additional_metrics
+        )
         for k, v in metrics.items():
             aggr_metrics[k] += v
 
@@ -141,5 +165,8 @@ def eval_puzzles(
     aggr_metrics["accuracy"] /= len(puzzles)
     aggr_metrics["lcc"] /= len(puzzles)
     aggr_metrics["fa"] /= len(puzzles)
+
+    for key in additional_metrics.keys():
+        aggr_metrics[key] /= len(puzzles)
 
     return aggr_metrics
