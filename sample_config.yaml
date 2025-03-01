@@ -7,6 +7,12 @@ logging:
   store_new_matches: True
   store_trusted_clusters: True
 
+# Model settings
+model:
+  id: "UNet_20250114_085543"
+  directory: "models"
+  activation_threshold: 0.8
+
 # Defines the parameters of the piece representation
 piece:
   # Polygon approximation precision
@@ -20,8 +26,12 @@ cluster:
   self_intersection_tol: 0.02
   rotation_tol: 0.17
   translation_tol: 30
+  match_length_weight: 0.2
+  min_border_length: 30
 
 trusted_cluster:
+  consistent_cycle_lengths: [3, 4]
+  use_trusted_clusters: True
   complexity_threshold: 4
   color_threshold: 0.01
   dist_threshold: 1.15
