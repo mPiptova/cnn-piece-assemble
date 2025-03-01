@@ -9,15 +9,13 @@ import numpy as np
 from skimage.transform import rescale
 from tqdm import tqdm
 
-from piece_assemble.cluster import Cluster
 from piece_assemble.cycles import TransformationGraph
 from piece_assemble.image import np_to_pil
-from piece_assemble.models.predict import Predictor
-from piece_assemble.neighbors import BorderLengthNeighborClassifier
 
 if TYPE_CHECKING:
-    from piece_assemble.cluster import ClusterScorerBase
+    from piece_assemble.cluster import Cluster, ClusterScorerBase
     from piece_assemble.matching.match import Match
+    from piece_assemble.models.predict import Predictor
     from piece_assemble.piece import Piece
 
 
@@ -84,9 +82,6 @@ class Clustering:
         patience: int = 10,
     ) -> Cluster | None:
         self.cluster_config = cluster_config
-        self.cluster_config["neighbor_classifier"] = BorderLengthNeighborClassifier(
-            30, self.cluster_config["border_dist_tol"]
-        )
 
         self.predictor = predictor
 
