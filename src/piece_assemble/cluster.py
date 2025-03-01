@@ -46,13 +46,11 @@ class EmbeddingClusterScorer(ClusterScorerBase):
     def __init__(
         self,
         embeddings: Embeddings,
-        pieces: dict[str, TransformedPiece],
-        activation_threshold: float = 0.7,
+        length_weight: float = 0.2,
     ) -> None:
         super().__init__()
         self.embeddings = embeddings
-        self.activation_threshold = activation_threshold
-        self.min_piece_len = min([len(p.contour) for p in pieces.values()])
+        self.length_weight = length_weight
 
     def __call__(self, cluster: Cluster) -> float:
         score = 0
@@ -63,10 +61,12 @@ class EmbeddingClusterScorer(ClusterScorerBase):
             idxs1, idxs2 = cluster.get_match_border_idxs(*neighbor_pair)
             if idxs1 is None or idxs2 is None:
                 continue
-            weight = len(idxs1) / self.min_piece_len
-            score += (matrix[idxs1, idxs2].sum() / len(idxs1)) * weight**0.25
+            score += (matrix[idxs1, idxs2].sum() / len(idxs1)) * (
+                len(idxs1) ** self.length_weight
+            )
 
-        return score
+        cluster_score: float = score / (len(cluster.pieces) ** 0.5)
+        return cluster_score
 
 
 class ClusterScorer(ClusterScorerBase):

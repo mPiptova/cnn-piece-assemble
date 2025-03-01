@@ -14,6 +14,7 @@ from piece_assemble.clustering import Clustering
 from piece_assemble.config import load_config
 from piece_assemble.load import load_images
 from piece_assemble.models.predict import load_predictor
+from piece_assemble.neighbors import BorderLengthNeighborClassifier
 from piece_assemble.piece import Piece
 
 if __name__ == "__main__":
@@ -41,10 +42,17 @@ if __name__ == "__main__":
     )
 
     cluster_scorer = EmbeddingClusterScorer(
-        predictor.predict_embeddings(pieces_dict), pieces_dict
+        predictor.predict_embeddings(pieces_dict),
+        config["cluster"].pop("match_length_weight", 0.2),
     )
     clustering = Clustering(pieces, cluster_scorer)
 
+    neighbor_classifier = BorderLengthNeighborClassifier(
+        config["cluster"].pop("min_border_length", 30),
+        config["cluster"]["border_dist_tol"],
+    )
+
+    config["cluster"]["neighbor_classifier"] = neighbor_classifier
     clustering.set_logging(**config["logging"])
     clustering(
         **config["clustering"],
