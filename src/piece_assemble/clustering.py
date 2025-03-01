@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import random
 import shutil
+from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
@@ -120,6 +121,61 @@ class Clustering:
         self.all_pair_clusters = sorted(
             self.all_pair_clusters, key=lambda c: c.score, reverse=True
         )
+
+    def run_with_backtracking(
+        self,
+        clusters: list[Cluster],
+        pair_clusters: list[Cluster],
+    ) -> tuple[list[Cluster], bool]:
+        if len(pair_clusters) == 0:
+            return clusters, False
+
+        for i in range(len(pair_clusters)):
+            new_pair_cluster = pair_clusters[i]
+            new_clusters = clusters + [new_pair_cluster]
+            new_clusters = self.recombine_strict(new_clusters)
+            if new_clusters is None:
+                continue
+            timestamp = (
+                datetime.now().strftime("%Y%m%d_%H%M%S") + f"_{len(new_clusters)}_{i}"
+            )
+            self.store_iteration(f"{timestamp}_clusters", new_clusters)
+            self.store_iteration(f"{timestamp}_new", [new_pair_cluster])
+            if len(new_clusters) == 1 and len(new_clusters[0].piece_ids) == len(
+                self.pieces
+            ):
+                return new_clusters, True
+            new_clusters, assembled = self.run_with_backtracking(
+                new_clusters, pair_clusters[i + 1 :]
+            )
+            if assembled:
+                return new_clusters, True
+
+        return clusters, False
+
+    def recombine_strict(self, clusters: list[Cluster]) -> list[Cluster] | None:
+        something_changed = True
+        while something_changed:
+            something_changed = False
+            if len(clusters) < 2:
+                return clusters
+            for i, cluster in enumerate(clusters):
+                for j in range(i + 1, len(clusters)):
+                    other_cluster = clusters[j]
+                    if (
+                        len(cluster.piece_ids.intersection(other_cluster.piece_ids))
+                        == 0
+                        or cluster.piece_ids.intersection(other_cluster.piece_ids) == 0
+                    ):
+                        continue
+                    if not cluster.can_be_merged(other_cluster):
+                        return None
+
+                    clusters.pop(j)
+                    clusters.pop(i)
+                    clusters.append(cluster.merge(other_cluster, try_fix=False))
+                    something_changed = True
+        return clusters
 
     def run(
         self,
