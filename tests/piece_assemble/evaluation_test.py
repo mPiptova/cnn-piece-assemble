@@ -227,16 +227,12 @@ def test_correct_piece_ratio(
     expected_result: float,
 ) -> None:
     assembled = {
-        "transformed_pieces": [
-            {"id": piece_id, "transformation": transformation}
-            for piece_id, transformation in pred_transformations.items()
-        ]
+        piece_id: Transformation.from_dict(transformation)
+        for piece_id, transformation in pred_transformations.items()
     }
     ground_truth = {
-        "transformed_pieces": [
-            {"id": piece_id, "transformation": transformation}
-            for piece_id, transformation in true_transformations.items()
-        ]
+        piece_id: Transformation.from_dict(transformation)
+        for piece_id, transformation in true_transformations.items()
     }
 
     assert correct_piece_ratio(

@@ -1,9 +1,35 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from piece_assemble.geometry import Transformation
+
+if TYPE_CHECKING:
+    PieceTransformations = dict[str, Transformation]
+
+
+def cluster_dict_to_transformations(cluster_dict: dict) -> PieceTransformations:
+    """Converts a cluster dictionary to a dictionary of transformations.
+
+    Parameters
+    ----------
+    cluster_dict
+        Dictionary containing the definition of a cluster
+
+    Returns
+    -------
+    piece_transformations
+        Dictionary mapping piece ids to transformations
+    """
+    return {
+        piece_id: Transformation.from_dict(transformation)
+        for piece_id, transformation in cluster_dict["transformed_pieces"].items()
+    }
 
 
 def _fixed_position_correct_piece_ratio(
-    pred_transformations: dict,
-    true_transformations: dict,
+    predicted: PieceTransformations,
+    ground_truth: PieceTransformations,
     angle_tol: float,
     translation_tol: float,
 ) -> float:
@@ -34,14 +60,14 @@ def _fixed_position_correct_piece_ratio(
     """
 
     # Corner cases
-    if len(true_transformations) == 0:
+    if len(ground_truth) == 0:
         return 1
-    if len(pred_transformations) == 0:
+    if len(predicted) == 0:
         return 0
 
     correct_number = 0
-    for piece_id, true_transformation in true_transformations.items():
-        pred_transformation = pred_transformations.get(piece_id, None)
+    for piece_id, true_transformation in ground_truth.items():
+        pred_transformation = predicted.get(piece_id, None)
         if pred_transformation is None:
             continue
         if pred_transformation.is_close(
@@ -49,23 +75,24 @@ def _fixed_position_correct_piece_ratio(
         ):
             correct_number += 1
 
-    return correct_number / len(true_transformations)
+    return correct_number / len(ground_truth)
 
 
 def correct_piece_ratio(
-    assembled: dict, ground_truth: dict, angle_tol: float, translation_tol: float
+    predicted: PieceTransformations,
+    ground_truth: PieceTransformations,
+    angle_tol: float,
+    translation_tol: float,
 ) -> float:
     """
     Calculate the ratio of correctly transformed pieces, given two assemblies.
 
     Parameters
     ----------
-    assembled
-        The assembled pieces, as a dictionary with the following keys:
-            - transformed_pieces: a list of dictionaries, each containing the keys 'id'
-            and 'transformation'
+    predictd
+        Representation of the predicted pieces transformations.
     ground_truth
-        The ground truth pieces, as a dictionary with the same structure as `assembled`
+        Representation of the ground truth pieces transformations.
     angle_tol
         The maximum angle difference between the predicted and ground truth
         transformations for them to be considered the same
@@ -78,20 +105,10 @@ def correct_piece_ratio(
     ratio
         The ratio of correctly transformed pieces
     """
-    true_transformations = {
-        piece["id"]: Transformation.from_dict(piece["transformation"])
-        for piece in ground_truth["transformed_pieces"]
-    }
-
-    pred_transformations = {
-        piece["id"]: Transformation.from_dict(piece["transformation"])
-        for piece in assembled["transformed_pieces"]
-    }
-
     max_ratio = 0
-    for piece_id in true_transformations.keys():
-        true_t = true_transformations.get(piece_id, None)
-        pred_t = pred_transformations.get(piece_id, None)
+    for piece_id in ground_truth.keys():
+        true_t = ground_truth.get(piece_id, None)
+        pred_t = predicted.get(piece_id, None)
         if pred_t is None or true_t is None:
             continue
 
@@ -99,10 +116,10 @@ def correct_piece_ratio(
         pred_t = pred_t.inverse()
 
         normalized_true = {
-            piece_id: t.compose(true_t) for piece_id, t in true_transformations.items()
+            piece_id: t.compose(true_t) for piece_id, t in ground_truth.items()
         }
         normalized_pred = {
-            piece_id: t.compose(pred_t) for piece_id, t in pred_transformations.items()
+            piece_id: t.compose(pred_t) for piece_id, t in predicted.items()
         }
 
         ratio = _fixed_position_correct_piece_ratio(
