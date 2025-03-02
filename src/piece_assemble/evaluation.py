@@ -78,6 +78,41 @@ def _fixed_position_correct_piece_ratio(
     return correct_number / len(ground_truth)
 
 
+def unify_transformations(
+    predicted: PieceTransformations, ground_truth: PieceTransformations, key: str
+) -> PieceTransformations | None:
+    """Transform the predicted pieces to match the transformation of given piece.
+
+    Parameters
+    ----------
+    predicted
+        Representation of the predicted pieces transformations.
+    ground_truth
+        Representation of the ground truth pieces transformations.
+    key
+        The piece whose transformation will be used to unify the transformations.
+
+    Returns
+    -------
+    unified_transformations
+        Predicted transformations rotated and translated in such a way that the
+        transformation of piece `key` is the same as the ground truth. Other pieces are
+        transformed correspondingly.
+
+    """
+    true_t = ground_truth.get(key, None)
+    pred_t = predicted.get(key, None)
+    if pred_t is None or true_t is None:
+        return None
+
+    unifying_transformation = pred_t.inverse().compose(true_t)
+
+    return {
+        piece_id: t.compose(unifying_transformation)
+        for piece_id, t in predicted.items()
+    }
+
+
 def correct_piece_ratio(
     predicted: PieceTransformations,
     ground_truth: PieceTransformations,
@@ -89,7 +124,7 @@ def correct_piece_ratio(
 
     Parameters
     ----------
-    predictd
+    predicted
         Representation of the predicted pieces transformations.
     ground_truth
         Representation of the ground truth pieces transformations.
@@ -107,23 +142,12 @@ def correct_piece_ratio(
     """
     max_ratio = 0
     for piece_id in ground_truth.keys():
-        true_t = ground_truth.get(piece_id, None)
-        pred_t = predicted.get(piece_id, None)
-        if pred_t is None or true_t is None:
+        unified_pred = unify_transformations(predicted, ground_truth, piece_id)
+        if unified_pred is None:
             continue
 
-        true_t = true_t.inverse()
-        pred_t = pred_t.inverse()
-
-        normalized_true = {
-            piece_id: t.compose(true_t) for piece_id, t in ground_truth.items()
-        }
-        normalized_pred = {
-            piece_id: t.compose(pred_t) for piece_id, t in predicted.items()
-        }
-
         ratio = _fixed_position_correct_piece_ratio(
-            normalized_pred, normalized_true, angle_tol, translation_tol
+            unified_pred, ground_truth, angle_tol, translation_tol
         )
         if ratio > max_ratio:
             max_ratio = ratio
