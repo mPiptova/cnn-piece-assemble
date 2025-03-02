@@ -1,8 +1,12 @@
+import numpy as np
 import pytest
 
 from piece_assemble.evaluation import (
+    PieceTransformations,
     _fixed_position_correct_piece_ratio,
+    _get_correct_clusters,
     correct_piece_ratio,
+    number_of_correct_components,
 )
 from piece_assemble.geometry import Transformation
 
@@ -238,3 +242,152 @@ def test_correct_piece_ratio(
     assert correct_piece_ratio(
         assembled, ground_truth, angle_tol, translation_tol
     ) == pytest.approx(expected_result, 0.01)
+
+
+@pytest.mark.parametrize(
+    "pred_transformations, ground_truth, correct_clusters",
+    [
+        # All are correct
+        (
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 10])),
+            },
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 10])),
+            },
+            [{"0", "1", "2"}],
+        ),
+        # None are correct
+        (
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 10])),
+            },
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([0, 5])),
+                "2": Transformation(0.8, np.array([10, 1])),
+            },
+            [{"0"}, {"1"}, {"2"}],
+        ),
+        # Two clusters
+        (
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 10])),
+                "3": Transformation(0.8, np.array([10, 1])),
+            },
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 20])),
+                "3": Transformation(0.8, np.array([10, 11])),
+            },
+            [{"0", "1"}, {"2", "3"}],
+        ),
+    ],
+)
+def test_get_correct_clusters(
+    pred_transformations: PieceTransformations,
+    ground_truth: PieceTransformations,
+    correct_clusters: list[set[str]],
+) -> None:
+
+    pred_correct_clusters = sorted(
+        _get_correct_clusters(pred_transformations, ground_truth, 0.17, 5)
+    )
+    correct_clusters = sorted(correct_clusters)
+
+    assert pred_correct_clusters == correct_clusters
+
+
+@pytest.mark.parametrize(
+    "pred_transformations, ground_truth, expected_components",
+    [
+        # All are correct
+        (
+            [
+                {
+                    "0": Transformation(0.2, np.array([5, 0])),
+                    "1": Transformation(0.3, np.array([10, 10])),
+                    "2": Transformation(0.8, np.array([1, 10])),
+                }
+            ],
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 10])),
+            },
+            1,
+        ),
+        # None are correct
+        (
+            [
+                {
+                    "0": Transformation(0.2, np.array([5, 0])),
+                    "1": Transformation(0.3, np.array([10, 10])),
+                    "2": Transformation(0.8, np.array([1, 10])),
+                }
+            ],
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([0, 5])),
+                "2": Transformation(0.8, np.array([10, 1])),
+            },
+            3,
+        ),
+        # Two clusters
+        (
+            [
+                {
+                    "0": Transformation(0.2, np.array([5, 0])),
+                    "1": Transformation(0.3, np.array([10, 10])),
+                    "2": Transformation(0.8, np.array([1, 10])),
+                    "3": Transformation(0.8, np.array([10, 1])),
+                }
+            ],
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 20])),
+                "3": Transformation(0.8, np.array([10, 11])),
+            },
+            2,
+        ),
+        (
+            [
+                {
+                    "0": Transformation(0.2, np.array([5, 0])),
+                    "1": Transformation(0.3, np.array([10, 10])),
+                    "2": Transformation(0.8, np.array([30, 50])),
+                },
+                {
+                    "2": Transformation(0.8, np.array([1, 20])),
+                    "3": Transformation(0.8, np.array([10, 11])),
+                },
+            ],
+            {
+                "0": Transformation(0.2, np.array([5, 0])),
+                "1": Transformation(0.3, np.array([10, 10])),
+                "2": Transformation(0.8, np.array([1, 20])),
+                "3": Transformation(0.8, np.array([10, 11])),
+            },
+            2,
+        ),
+    ],
+)
+def test_number_of_correct_components(
+    pred_transformations: list[PieceTransformations],
+    ground_truth: PieceTransformations,
+    expected_components: int,
+) -> None:
+    assert (
+        number_of_correct_components(pred_transformations, ground_truth, 0.17, 5)
+        == expected_components
+    )

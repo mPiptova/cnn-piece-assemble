@@ -153,3 +153,83 @@ def correct_piece_ratio(
             max_ratio = ratio
 
     return max_ratio
+
+
+def _merge_overlapping_clusters(clusters: list[set[str]]) -> list[set[str]]:
+    something_changed = True
+    while something_changed:
+        something_changed = False
+        for i, cluster in enumerate(clusters):
+            for j in range(i + 1, len(clusters)):
+                other_cluster = clusters[j]
+                if cluster.intersection(other_cluster):
+                    clusters.pop(j)
+                    clusters.pop(i)
+                    clusters.append(cluster.union(other_cluster))
+                    something_changed = True
+    return clusters
+
+
+def _get_correct_clusters(
+    assembled: PieceTransformations,
+    ground_truth: PieceTransformations,
+    angle_tol: float,
+    translation_tol: float,
+) -> list[set[str]]:
+    if len(assembled) == 0:
+        return []
+
+    clusters: list[set[str]] = []
+
+    for piece_id in assembled.keys():
+        unified_pred = unify_transformations(assembled, ground_truth, piece_id)
+        if unified_pred is None:
+            continue
+        clusters.append(
+            {
+                p_id
+                for p_id in unified_pred.keys()
+                if unified_pred[p_id].is_close(
+                    ground_truth[p_id], angle_tol, translation_tol
+                )
+            }
+        )
+        clusters = _merge_overlapping_clusters(clusters)
+
+    return clusters
+
+
+def number_of_correct_components(
+    predicted: list[PieceTransformations],
+    ground_truth: PieceTransformations,
+    angle_tol: float,
+    translation_tol: float,
+) -> float:
+    largest_cluster_per_piece: dict[str, set[str]] = {
+        id: {id} for id in ground_truth.keys()
+    }
+    for pred_cluster in predicted:
+        correct_clusters = _get_correct_clusters(
+            pred_cluster, ground_truth, angle_tol, translation_tol
+        )
+        for cluster in correct_clusters:
+            for piece_id in cluster:
+                if len(largest_cluster_per_piece[piece_id]) < len(cluster):
+                    largest_cluster_per_piece[piece_id] = cluster
+
+    largest_clusters = sorted(
+        list(largest_cluster_per_piece.values()),
+        key=lambda cluster: len(cluster),
+        reverse=True,
+    )
+    unique_clusters = []
+    while len(largest_clusters) > 0:
+        unique_clusters.append(largest_clusters.pop(0))
+        remaining_clusters = []
+        for c in largest_clusters:
+            c = c.difference(unique_clusters[-1])
+            if len(c) > 0:
+                remaining_clusters.append(c)
+        largest_clusters = remaining_clusters
+
+    return len(unique_clusters)
