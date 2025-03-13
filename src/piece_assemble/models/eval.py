@@ -32,11 +32,27 @@ def eval_assembly_potential(matches: list[Match], n_pieces: int) -> float:
     return max([len(component) for component in components]) / n_pieces
 
 
-def _get_gold_transformation(
-    match: Match, pieces: Mapping[str, TransformedPiece]
+def get_relative_transformation(
+    piece_id1: str, piece_id2: str, pieces: Mapping[str, TransformedPiece]
 ) -> Transformation:
-    piece1 = pieces[match.id1]
-    piece2 = pieces[match.id2]
+    """
+    Get the relative transformation between two pieces.
+
+    Parameters
+    ----------
+    piece_id1
+        The id of the first piece.
+    piece_id2
+        The id of the second piece.
+    pieces
+        The pieces in the puzzle.
+
+    Returns
+    -------
+    Transformation
+        The relative transformation between the two pieces."""
+    piece1 = pieces[piece_id1]
+    piece2 = pieces[piece_id2]
 
     return piece1.transform(piece2.transformation.inverse()).transformation
 
@@ -75,7 +91,7 @@ def eval_puzzle(
 
         pred_neighbors_set.add(tuple(sorted((match.id1, match.id2))))
 
-        gold_transformation = _get_gold_transformation(match, pieces)
+        gold_transformation = get_relative_transformation(match.id1, match.id2, pieces)
 
         if tuple(sorted((match.id1, match.id2))) in neighbors_set:
             if match.transformation.is_close(gold_transformation):
