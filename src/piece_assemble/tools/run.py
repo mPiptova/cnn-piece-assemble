@@ -6,8 +6,10 @@ python src/piece_assemble/tools/run.py /path/to/config
 
 """
 
+from __future__ import annotations
 
 import argparse
+from typing import TYPE_CHECKING
 
 from piece_assemble.cluster import EmbeddingClusterScorer
 from piece_assemble.clustering import Clustering
@@ -17,14 +19,11 @@ from piece_assemble.models.predict import load_predictor
 from piece_assemble.neighbors import BorderLengthNeighborClassifier
 from piece_assemble.piece import Piece
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Piece assemble.")
-    parser.add_argument("config", type=str, help="Path to the configuration file")
-    args = parser.parse_args()
+if TYPE_CHECKING:
+    from piece_assemble.cluster import Cluster
 
-    config_path = args.config
-    config = load_config(config_path)
 
+def run_prediction(config: dict) -> list[Cluster]:
     img_ids, imgs, masks = load_images(config["img_path"], config["piece"]["scale"])
 
     pieces = [
@@ -48,17 +47,34 @@ if __name__ == "__main__":
     clustering = Clustering(pieces, cluster_scorer)
 
     neighbor_classifier = BorderLengthNeighborClassifier(
-        config["cluster"].pop("min_border_length", 30),
+        config["cluster"].pop("min_border_length"),
         config["cluster"]["border_dist_tol"],
     )
-
     config["cluster"]["neighbor_classifier"] = neighbor_classifier
+
     clustering.set_logging(**config["logging"])
-    clusters = clustering(
+
+    if not config["clustering"].get("n_iters", False):
+        config["clustering"]["n_iters"] = max(30, len(pieces) + len(pieces) // 2)
+
+    clusters: list[Cluster] = clustering(
         **config["clustering"],
         cluster_config=config["cluster"],
         trusted_cluster_config=config["trusted_cluster"],
         predictor=predictor,
     )
+
+    return clusters
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Piece assemble.")
+    parser.add_argument("config", type=str, help="Path to the configuration file")
+    args = parser.parse_args()
+
+    config_path = args.config
+    config = load_config(config_path)
+
+    clusters = run_prediction(config)
     cluster_dicts = [cluster.to_dict() for cluster in clusters]
     print(cluster_dicts)
