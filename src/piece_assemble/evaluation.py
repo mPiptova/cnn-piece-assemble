@@ -204,37 +204,42 @@ def _get_correct_clusters(
     return clusters
 
 
-def number_of_correct_components(
+def get_correctly_predicted_clusters(
     predicted: list[PieceTransformations],
     ground_truth: PieceTransformations,
     angle_tol: float,
     translation_tol: float,
-) -> float:
-    largest_cluster_per_piece: dict[str, set[str]] = {
-        id: {id} for id in ground_truth.keys()
+) -> list[PieceTransformations]:
+    largest_cluster_per_piece = {
+        id: {id: Transformation.identity()} for id in ground_truth.keys()
     }
     for pred_cluster in predicted:
-        correct_clusters = _get_correct_clusters(
+        correct_clusters_pieces = _get_correct_clusters(
             pred_cluster, ground_truth, angle_tol, translation_tol
         )
+        correct_clusters = [
+            {piece_id: pred_cluster[piece_id] for piece_id in cluster_pieces}
+            for cluster_pieces in correct_clusters_pieces
+        ]
         for cluster in correct_clusters:
-            for piece_id in cluster:
+            for piece_id in cluster.keys():
                 if len(largest_cluster_per_piece[piece_id]) < len(cluster):
-                    largest_cluster_per_piece[piece_id] = cluster
+                    largest_cluster_per_piece[piece_id] = cluster.copy()
 
     largest_clusters = sorted(
         list(largest_cluster_per_piece.values()),
         key=lambda cluster: len(cluster),
         reverse=True,
     )
+
     unique_clusters = []
     while len(largest_clusters) > 0:
-        unique_clusters.append(largest_clusters.pop(0))
-        remaining_clusters = []
+        new_unique_cluster = largest_clusters.pop(0)
+        unique_clusters.append(new_unique_cluster)
         for c in largest_clusters:
-            c = c.difference(unique_clusters[-1])
-            if len(c) > 0:
-                remaining_clusters.append(c)
-        largest_clusters = remaining_clusters
+            for key in new_unique_cluster.keys():
+                c.pop(key, None)
 
-    return len(unique_clusters)
+        largest_clusters = [cluster for cluster in largest_clusters if len(cluster) > 0]
+
+    return unique_clusters
