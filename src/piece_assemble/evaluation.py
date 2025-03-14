@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from piece_assemble.geometry import Transformation
+from piece_assemble.models.eval import get_relative_transformation
+from piece_assemble.models.metrics import (
+    RotationAngleError,
+    TransformationError,
+    TranslationError,
+)
 
 if TYPE_CHECKING:
     PieceTransformations = dict[str, Transformation]
@@ -243,3 +249,91 @@ def get_correctly_predicted_clusters(
         largest_clusters = [cluster for cluster in largest_clusters if len(cluster) > 0]
 
     return unique_clusters
+
+
+def registration_error(
+    predicted: PieceTransformations,
+    ground_truth: PieceTransformations,
+    neighbors: list[tuple[str, str]],
+) -> dict:
+    applicable_neighbors = [
+        neighbor
+        for neighbor in neighbors
+        if neighbor[0] in predicted and neighbor[1] in predicted
+    ]
+    pred_transformations = [
+        get_relative_transformation(predicted[neighbor[0]], predicted[neighbor[1]])
+        for neighbor in applicable_neighbors
+    ]
+    true_transformations = [
+        get_relative_transformation(
+            ground_truth[neighbor[0]], ground_truth[neighbor[1]]
+        )
+        for neighbor in applicable_neighbors
+    ]
+
+    metric_functions = {
+        "angle_error": RotationAngleError(),
+        "translation_error": TranslationError(),
+        "transformation_error": TransformationError(),
+    }
+
+    metrics = {
+        key: [
+            function(pred, true)
+            for pred, true in zip(pred_transformations, true_transformations)
+        ]
+        for key, function in metric_functions.items()
+    }
+
+    return metrics
+
+
+def evaluate(
+    predicted: list[PieceTransformations],
+    ground_truth: PieceTransformations,
+    gt_neighbors: list[tuple[str, str]],
+    rotation_tol: float,
+    translation_tol: float,
+) -> dict:
+    correctly_pred_clusters = get_correctly_predicted_clusters(
+        predicted, ground_truth, rotation_tol, translation_tol
+    )
+
+    correctly_pred_pieces = set.union(
+        *[set(cluster.keys()) for cluster in correctly_pred_clusters]
+    )
+    num_of_clusters = len(correctly_pred_clusters) + len(
+        ground_truth.keys() - correctly_pred_pieces
+    )
+
+    largest_cluster_size = max(len(cluster) for cluster in correctly_pred_clusters)
+    ratio = largest_cluster_size / len(ground_truth.keys())
+
+    registration_results_lists = {
+        "angle_error": [],
+        "translation_error": [],
+        "transformation_error": [],
+    }
+
+    for cluster in correctly_pred_clusters:
+        cluster_registration_results = registration_error(
+            cluster, ground_truth, gt_neighbors
+        )
+        for key, values in cluster_registration_results.items():
+            registration_results_lists[key].extend(values)
+
+    evaluation_results = {key: 0 for key in registration_results_lists.keys()}
+
+    for key, values in evaluation_results.items():
+        valid_values = [
+            value for value in registration_results_lists[key] if value is not None
+        ]
+        if len(valid_values) == 0:
+            evaluation_results[key] = 0
+        evaluation_results[key] = sum(valid_values) / len(valid_values)
+
+    evaluation_results["largest_cluster_ratio"] = ratio
+    evaluation_results["num_of_clusters"] = num_of_clusters
+
+    return evaluation_results
