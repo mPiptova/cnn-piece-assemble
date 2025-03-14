@@ -80,7 +80,7 @@ class Clustering:
         icp_min_change: float,
         predictor: Predictor,
         patience: int = 10,
-    ) -> Cluster | None:
+    ) -> list[Cluster]:
         self.cluster_config = cluster_config
 
         self.predictor = predictor
