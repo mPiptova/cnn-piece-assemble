@@ -6,6 +6,11 @@ from piece_assemble.geometry import Transformation
 
 if TYPE_CHECKING:
     PieceTransformations = dict[str, Transformation]
+    from piece_assemble.cluster import Cluster
+
+
+def cluster_to_transformations(cluster: Cluster) -> PieceTransformations:
+    return {piece.name: piece.transformation for piece in cluster.pieces.values()}
 
 
 def cluster_dict_to_transformations(cluster_dict: dict) -> PieceTransformations:
