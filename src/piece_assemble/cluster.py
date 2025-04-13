@@ -12,7 +12,7 @@ from rustworkx import PyGraph, connected_components
 from scipy.ndimage import gaussian_filter1d
 from shapely import Polygon
 from shapely.ops import unary_union
-from skimage.morphology import erosion
+from skimage.morphology import disk, erosion
 from skimage.transform import rotate
 
 from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
@@ -20,14 +20,14 @@ from piece_assemble.neighbors import (
     BorderLengthNeighborClassifier,
     get_border_complexity,
 )
+from piece_assemble.piece import TransformedPiece
 from piece_assemble.visualization import draw_contour
 
 if TYPE_CHECKING:
 
     from piece_assemble.models.embeddings import Embeddings
     from piece_assemble.neighbors import NeighborClassifierBase
-    from piece_assemble.piece import TransformedPiece
-    from piece_assemble.types import Points
+    from piece_assemble.types import NpImage, Points
 
 
 class ClusterScorerBase(ABC):
@@ -706,7 +706,12 @@ class Cluster:
     def avg_neighbor_count(self) -> float:
         return np.sum(self.neighbor_matrix, axis=0).mean()  # type: ignore
 
-    def draw(self, draw_contours: bool = False) -> np.ndarray:
+    def draw(
+        self,
+        draw_contours: bool = False,
+        draw_borders: bool = False,
+        thickness: int = 1,
+    ) -> np.ndarray:
         min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
 
         piece_imgs = []
@@ -764,16 +769,35 @@ class Cluster:
                 top_left[1] : top_left[1] + piece_img.shape[1],
             ] = np.where(piece_img < 0, img_crop, piece_img)
 
-        if draw_contours:
-            contours = [piece.contour for piece in self.pieces.values()]
+        def draw_contour_points(
+            contours: Points,
+            img: NpImage,
+            color: tuple[int, int, int],
+            thickness: int = 1,
+        ) -> NpImage:
             contours = (np.concatenate(contours) - offset).round().astype(int)
             contours = contours[(contours[:, 0] < size[0]) & (contours[:, 1] < size[1])]
             img_contour = np.ones((size[0], size[1]))
             img_contour = draw_contour(contours, img_contour)
-            img_contour = erosion(img_contour, np.ones((3, 3)))
-            img = np.where(
-                img_contour[:, :, np.newaxis] == 0, np.array([[[1, 0, 0]]]), img
+            if thickness > 1:
+                img_contour = erosion(img_contour, disk(thickness // 2))
+            img = np.where(img_contour[:, :, np.newaxis] == 0, np.array([[color]]), img)
+            return img
+
+        if draw_contours:
+            contours = [piece.contour for piece in self.pieces.values()]
+            img = draw_contour_points(contours, img, (0, 0, 0), thickness)
+
+        if draw_borders:
+            contours = []
+            for id1, id2 in self.get_neighbor_pairs():
+                contours1, contours2 = self.get_match_border_coordinates(id1, id2)
+                contours.append(contours1)
+                contours.append(contours2)
+            img = draw_contour_points(
+                np.stack(contours, axis=0), img, (1, 0, 0), thickness
             )
+
         return img
 
     @cached_property
