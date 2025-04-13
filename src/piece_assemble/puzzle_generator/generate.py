@@ -129,6 +129,20 @@ def store_puzzle(
         json.dump(cluster.to_dict(), f, indent=4)
 
 
+def resize_image(max_size: int | None, img_pil: Image) -> Image:
+    if max_size is not None and (img_pil.width > max_size or img_pil.height > max_size):
+        new_shape = (
+            (int(img_pil.width * max_size / img_pil.height), max_size)
+            if img_pil.height > img_pil.width
+            else (
+                max_size,
+                int(img_pil.height * max_size / img_pil.width),
+            )
+        )
+        img_pil = img_pil.resize(new_shape)
+    return img_pil
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Puzzle generator.")
 
@@ -205,18 +219,7 @@ if __name__ == "__main__":
         print(f"Processing image {i + 1}/{len(args.img_paths)}: {img_path}")
         img_pil = Image.open(img_path)
 
-        if args.max_size is not None and (
-            img_pil.width > args.max_size or img_pil.height > args.max_size
-        ):
-            new_shape = (
-                (int(img_pil.width * args.max_size / img_pil.height), args.max_size)
-                if img_pil.height > img_pil.width
-                else (
-                    args.max_size,
-                    int(img_pil.height * args.max_size / img_pil.width),
-                )
-            )
-            img_pil = img_pil.resize(new_shape)
+        img_pil = resize_image(args.max_size, img_pil)
 
         output_dir = os.path.join(
             args.output_dir, f"{args.num_pieces}_{os.path.basename(img_path)[:-4]}"
