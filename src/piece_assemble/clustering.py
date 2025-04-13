@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import random
 import shutil
@@ -187,6 +188,9 @@ class Clustering:
     ) -> None:
         self._generate_matches(icp_max_iters, icp_min_change)
         clusters_queue = self.all_pair_clusters.copy()
+        # self.clusters, _ = self.run_with_backtracking([], clusters_queue)
+        # self.store_iteration("finished", self.clusters)
+        # return
 
         if len(trusted_cluster_config["consistent_cycle_lengths"]) > 0:
             cycles = self.get_cycles(
@@ -272,13 +276,15 @@ class Clustering:
         if self._store_new_matches:
             self.store_iteration(f"{i}new_matches", [new_cluster])
 
-        self.clusters = self.use_new_matches(
-            self.clusters + self.trusted_clusters, [new_cluster]
+        self.clusters = self.use_new_match(
+            self.clusters + self.trusted_clusters, new_cluster
         )
 
-        self.clusters = self.recombine(
-            self.clusters + list(self.used_pair_clusters.values())
-        )
+        big_clusters = self.clusters.copy()
+        self.random.shuffle(big_clusters)
+        small_clusters = list(self.used_pair_clusters.values())
+        self.random.shuffle(small_clusters)
+        self.clusters = self.recombine(big_clusters + small_clusters)
         self.clusters.sort(key=lambda cluster: cluster.score, reverse=True)
 
         self.store_iteration(f"{i}iter", self.clusters)
@@ -296,24 +302,14 @@ class Clustering:
         self,
         cluster_queue: list[Cluster],
     ) -> Cluster | None:
-        while True:
-            new_cluster = None
-            if len(cluster_queue) > 0:
-                new_cluster = cluster_queue.pop(0)
+        while len(cluster_queue) > 0:
+            new_cluster = cluster_queue.pop(0)
 
-            if new_cluster is None and self.best_cluster is not None:
-                previous_clusters = self.find_applicable_previous_clusters(
-                    self.best_cluster, 1
-                )
-                if len(previous_clusters) == 0 and len(cluster_queue) == 0:
-                    return None
-                if len(previous_clusters) != 0:
-                    new_cluster = previous_clusters[0]
-
-            if new_cluster is not None:
-                new_cluster = self.process_new_cluster(new_cluster)
+            new_cluster = self.process_new_cluster(new_cluster)
             if new_cluster is not None:
                 return new_cluster
+
+        return None
 
     def process_new_cluster(self, new_cluster: Cluster) -> Cluster | None:
         new_cluster_list = self._check_new_clusters([new_cluster])
@@ -348,7 +344,7 @@ class Clustering:
         self,
         cluster1: Cluster,
         cluster2: Cluster,
-        max_cluster_size: int | None,
+        max_cluster_size: int | None = None,
         randomize_order: bool = True,
         finetune_iters: int | None = None,
     ) -> Cluster | None:
@@ -389,6 +385,25 @@ class Clustering:
             return None
         return new_cluster
 
+    def use_new_match(
+        self, clusters: list[Cluster], new_cluster: Cluster
+    ) -> list[Cluster]:
+        clusters = self.apply_trusted_clusters(clusters)
+        clusters = self.cluster_selection(clusters)
+
+        merged_clusters = []
+
+        for cluster in clusters:
+            merged_cluster = self.combine(
+                new_cluster, cluster, randomize_order=False, finetune_iters=3
+            )
+            if merged_cluster is None:
+                continue
+            merged_clusters.append(merged_cluster)
+
+        merged_clusters = self.apply_trusted_clusters(merged_clusters)
+        return self.cluster_selection(clusters + merged_clusters)
+
     def use_new_matches(
         self,
         clusters: list[Cluster],
@@ -421,6 +436,24 @@ class Clustering:
             clusters = self.cluster_selection(clusters)
         return clusters
 
+    def recombine_all(
+        self, clusters: list[Cluster], max_cluster_size: int | None = None
+    ) -> list[Cluster]:
+        all_clusters = clusters.copy()
+        for i, c1 in enumerate(clusters[:-1]):
+            for c2 in clusters[i + 1 :]:
+                new_cluster = self.combine(c1, c2, max_cluster_size)
+                if new_cluster is None:
+                    continue
+
+                all_clusters.append(new_cluster)
+
+        clusters = self.apply_trusted_clusters(all_clusters)
+        clusters = self.cluster_selection(clusters)
+        if len(clusters) == 0:
+            return self.trusted_clusters
+        return clusters
+
     def recombine(
         self, clusters: list[Cluster], max_cluster_size: int | None = None
     ) -> list[Cluster]:
@@ -447,7 +480,7 @@ class Clustering:
             new_clusters_dict = {
                 frozenset(cluster.piece_ids): cluster for cluster in clusters
             }
-            self.random.shuffle(clusters)
+            # self.random.shuffle(clusters)
 
             used_pieces = set()
             for i, c1 in enumerate(clusters[:-1]):
@@ -457,6 +490,9 @@ class Clustering:
                 for c2 in clusters[i + 1 :]:
                     key2 = frozenset(c2.piece_ids)
                     if key1 in used_pieces or key2 in used_pieces:
+                        continue
+
+                    if len(key1) == 2 or len(key2) == 2:
                         continue
 
                     new_cluster = self.combine(c1, c2, max_cluster_size)
@@ -469,7 +505,8 @@ class Clustering:
                             new_clusters_dict[new_key] = new_cluster
                     else:
                         used_pieces.update(
-                            {key for key in (key1, key2) if len(key) > 2}
+                            {key1, key2}
+                            # {key for key in (key1, key2) if len(key) > 2}
                         )
                         new_clusters_dict[new_key] = new_cluster
                         new_clusters_added = True
@@ -479,6 +516,7 @@ class Clustering:
 
             prev_cluster_len = len(clusters)
             clusters = list(new_clusters_dict.values())
+            clusters = self.apply_trusted_clusters(clusters)
             clusters = self.cluster_selection(clusters)
             if prev_cluster_len == len(clusters):
                 new_clusters_added = False
@@ -508,9 +546,7 @@ class Clustering:
         included_ids = set()
 
         for cluster in clusters:
-            if len(cluster.piece_ids.intersection(included_ids)) == len(
-                cluster.piece_ids
-            ):
+            if cluster.piece_ids.issubset(included_ids):
                 continue
 
             selected_clusters.append(cluster)
@@ -668,17 +704,20 @@ class Clustering:
             shutil.rmtree(base_dir)
             os.mkdir(base_dir)
 
+        def get_cluster_name(i: int, cluster: Cluster) -> str:
+            return f"{name}_{i:03d}_score{cluster.score:.2f}"
+
         def get_image_path(i: int, cluster: Cluster) -> str:
-            image_name = (
-                f"{name}_{i:03d}_score{cluster.score:.2f}"
-                + f"_color{cluster.color_dist:.3f}_dist{cluster.dist:.3f}"
-                + f"_complexity{cluster.complexity:.3f}.png"
-            )
-            return os.path.join(base_dir, image_name)
+            return os.path.join(base_dir, f"{get_cluster_name(i, cluster)}.png")
+
+        def get_json_path(i: int, cluster: Cluster) -> str:
+            return os.path.join(base_dir, f"{get_cluster_name(i, cluster)}.json")
 
         for i, cluster in enumerate(clusters):
             img = np_to_pil(rescale(cluster.draw(), 0.5, channel_axis=2))
             img.save(get_image_path(i, cluster))
+            with open(get_json_path(i, cluster), "w") as f:
+                json.dump(cluster.to_dict(), f, indent=4)
 
 
 def cluster_can_be_trusted(
