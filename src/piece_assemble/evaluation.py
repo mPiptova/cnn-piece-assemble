@@ -33,8 +33,8 @@ def cluster_dict_to_transformations(cluster_dict: dict) -> PieceTransformations:
         Dictionary mapping piece ids to transformations
     """
     return {
-        piece_id: Transformation.from_dict(transformation)
-        for piece_id, transformation in cluster_dict["transformed_pieces"].items()
+        piece_dict["id"]: Transformation.from_dict(piece_dict["transformation"])
+        for piece_dict in cluster_dict["transformed_pieces"]
     }
 
 
@@ -255,6 +255,8 @@ def registration_error(
     predicted: PieceTransformations,
     ground_truth: PieceTransformations,
     neighbors: list[tuple[str, str]],
+    angle_tol: float,
+    translation_tol: float,
 ) -> dict:
     applicable_neighbors = [
         neighbor
@@ -275,7 +277,9 @@ def registration_error(
     metric_functions = {
         "angle_error": RotationAngleError(),
         "translation_error": TranslationError(),
-        "transformation_error": TransformationError(),
+        "transformation_error": TransformationError(
+            angle_tol=angle_tol, translation_tol=translation_tol
+        ),
     }
 
     metrics = {
@@ -318,7 +322,7 @@ def evaluate(
 
     for cluster in correctly_pred_clusters:
         cluster_registration_results = registration_error(
-            cluster, ground_truth, gt_neighbors
+            cluster, ground_truth, gt_neighbors, rotation_tol, translation_tol
         )
         for key, values in cluster_registration_results.items():
             registration_results_lists[key].extend(values)
