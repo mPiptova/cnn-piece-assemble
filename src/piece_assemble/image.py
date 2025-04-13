@@ -71,6 +71,10 @@ def load_img(img_path: str, scale: float = 1, padding: int = 0) -> NpImage:
     bin_img
     """
     img = Image.open(img_path)
+
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
     img_np = rescale(pil_to_np(img), scale, channel_axis=2)
     return np.pad(
         img_np,
