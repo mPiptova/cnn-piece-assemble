@@ -132,7 +132,9 @@ def eval_puzzle(
 
     lcc = eval_assembly_potential(tp_matches, len(pieces))
 
-    other_metrics_results = {key: value / tp for key, value in other_metrics.items()}
+    other_metrics_results = {
+        key: value / tp if tp > 0 else 0 for key, value in other_metrics.items()
+    }
 
     basic_metrics = {
         "precision": precision,
@@ -147,7 +149,7 @@ def eval_puzzle(
         "tn": tn,
         "accuracy": accuracy,
         "lcc": lcc,
-        "fa": 1 if lcc == 1 else 0,
+        "fa": 1 if lcc >= 1 else 0,
     }
 
     return {**basic_metrics, **other_metrics_results}
