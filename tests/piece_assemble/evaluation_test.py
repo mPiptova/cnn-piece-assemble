@@ -1,14 +1,20 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 
 from piece_assemble.evaluation import (
-    PieceTransformations,
     _fixed_position_correct_piece_ratio,
     _get_correct_clusters,
     correct_piece_ratio,
-    number_of_correct_components,
+    get_correctly_predicted_clusters,
 )
 from piece_assemble.geometry import Transformation
+
+if TYPE_CHECKING:
+    from piece_assemble.evaluation import PieceTransformations
 
 
 @pytest.mark.parametrize(
@@ -388,6 +394,10 @@ def test_number_of_correct_components(
     expected_components: int,
 ) -> None:
     assert (
-        number_of_correct_components(pred_transformations, ground_truth, 0.17, 5)
+        len(
+            get_correctly_predicted_clusters(
+                pred_transformations, ground_truth, 0.17, 5
+            )
+        )
         == expected_components
     )
