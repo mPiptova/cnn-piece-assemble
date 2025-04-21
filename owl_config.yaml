@@ -1,0 +1,36 @@
+img_path: "data/owl_101pcs_without_holes"
+
+logging:
+  output_images_path: "output/owl"
+  store_new_matches: True
+  store_trusted_clusters: True
+
+model:
+  id: "UNet_20250114_085543"
+  directory: "models"
+  activation_threshold: 0.6
+
+cluster:
+  border_dist_tol: 5
+  self_intersection_tol: 0.02
+  rotation_tol: 0.17
+  translation_tol: 25
+  match_length_weight: 0.4
+  min_border_length: 20
+
+trusted_cluster:
+  consistent_cycle_lengths: [3, 4]
+  use_trusted_clusters: False
+  complexity_threshold: 0.3
+  color_threshold: 0.005
+  dist_threshold: 0.8
+
+piece:
+  polygon_approximation_tolerance: 3
+  scale: 0.3
+
+
+clustering:
+  n_iters: 150
+  icp_max_iters: 100
+  icp_min_change: 0.3
