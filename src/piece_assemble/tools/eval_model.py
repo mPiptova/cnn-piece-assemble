@@ -1,3 +1,16 @@
+"""
+Script for evaluating the model.
+
+usage: eval_model.py [-h] dataset_path puzzles_path activation_threshold models_path MODEL [MODEL ...]
+
+positional arguments:
+  dataset_path          Path to the directory where the puzzles are stored
+  puzzles_path          Path to the file containing the list of puzzles which should be used for evaluation
+  activation_threshold  Activation threshold for the model output
+  models_path           Path to the directory where the models are stored
+  MODEL                 ID of the model to evaluate
+"""
+
 import argparse
 import os
 
@@ -14,11 +27,11 @@ from piece_assemble.models.predict import load_predictor
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("dataset_path", type=str)
-    parser.add_argument("puzzles_path", type=str)
-    parser.add_argument("activation_threshold", type=float)
-    parser.add_argument("models_path", type=str)
-    parser.add_argument("models", type=str, nargs="+")
+    parser.add_argument("dataset_path", type=str, help="Path to the directory where the puzzles are stored")
+    parser.add_argument("puzzles_path", type=str, help="Path to the file containing the list of puzzles which should be used for evaluation")
+    parser.add_argument("activation_threshold", type=float, help="Activation threshold for the model output")
+    parser.add_argument("models_path", type=str, help="Path to the directory where the models are stored")
+    parser.add_argument("models", type=str, nargs="+", help="Model IDs to evaluate")
     args = parser.parse_args()
 
     with open(args.puzzles_path, "r") as f:

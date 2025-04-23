@@ -1,3 +1,14 @@
+"""
+Script for evaluating the assembly algorithm.
+
+usage: eval_assembly.py [-h] config puzzles_path dataset_path
+
+positional arguments:
+  config        Configuration file
+  puzzles_path  Path to the file containing the list of puzzles which should be used for evaluation
+  dataset_path  Path to the directory where the puzzles are stored
+"""
+
 import argparse
 import os
 from copy import deepcopy
@@ -5,13 +16,13 @@ from copy import deepcopy
 from piece_assemble.config import load_config
 from piece_assemble.evaluation import cluster_to_transformations, evaluate
 from piece_assemble.load import load_puzzle
-from piece_assemble.tools.run import run_prediction
+from piece_assemble.tools.run_assembly import run_prediction
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate piece assemble.")
-    parser.add_argument("config", type=str, help="Path to the configuration file")
-    parser.add_argument("puzzles_path", type=str)
-    parser.add_argument("dataset_path", type=str)
+    parser.add_argument("config", type=str, help="Configuration file")
+    parser.add_argument("puzzles_path", type=str, help="Path to the file containing the list of puzzles which should be used for evaluation")
+    parser.add_argument("dataset_path", type=str, help="Path to the directory where the puzzles are stored")
     args = parser.parse_args()
 
     config_path = args.config
