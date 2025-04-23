@@ -188,9 +188,6 @@ class Clustering:
     ) -> None:
         self._generate_matches(icp_max_iters, icp_min_change)
         clusters_queue = self.all_pair_clusters.copy()
-        # self.clusters, _ = self.run_with_backtracking([], clusters_queue)
-        # self.store_iteration("finished", self.clusters)
-        # return
 
         if len(trusted_cluster_config["consistent_cycle_lengths"]) > 0:
             cycles = self.get_cycles(
@@ -198,14 +195,6 @@ class Clustering:
                 trusted_cluster_config["consistent_cycle_lengths"],
             )
             self.update_trusted_clusters(cycles, lambda _: True)
-
-        if trusted_cluster_config["use_trusted_clusters"]:
-            clusters_queue = self.update_trusted_clusters(
-                clusters_queue,
-                lambda cluster: cluster_can_be_trusted(
-                    cluster, **trusted_cluster_config
-                ),
-            )
 
         self.clusters = self.trusted_clusters
 
@@ -719,35 +708,3 @@ class Clustering:
             with open(get_json_path(i, cluster), "w") as f:
                 json.dump(cluster.to_dict(), f, indent=4)
 
-
-def cluster_can_be_trusted(
-    cluster: Cluster,
-    complexity_threshold: float,
-    dist_threshold: float,
-    color_threshold: float,
-) -> bool:
-    """
-    Check if a cluster can be trusted.
-
-    Parameters
-    ----------
-    cluster
-        The cluster to be checked.
-    complexity_threshold
-        The threshold for the cluster's complexity.
-    dist_threshold
-        The threshold for the cluster's distance.
-    color_threshold
-        The threshold for the cluster's color distance.
-
-    Returns
-    -------
-    bool
-        True if the cluster can be trusted, False otherwise.
-
-    """
-    return (  # type: ignore
-        cluster.complexity > complexity_threshold * (len(cluster.piece_ids) - 1)
-        and cluster.dist < dist_threshold
-        and cluster.color_dist < color_threshold
-    )

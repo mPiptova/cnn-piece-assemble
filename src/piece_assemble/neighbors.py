@@ -5,13 +5,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from piece_assemble.contours import smooth_contours
 from piece_assemble.geometry import get_common_contour_idxs
 from piece_assemble.utils import longest_continuous_subsequence
 
 if TYPE_CHECKING:
     from piece_assemble.piece import Piece, TransformedPiece
-    from piece_assemble.types import Points
 
 
 class NeighborClassifierBase(ABC):
@@ -29,82 +27,6 @@ class BorderLengthNeighborClassifier(NeighborClassifierBase):
     def __call__(self, piece1: TransformedPiece, piece2: TransformedPiece) -> bool:
         idxs, _ = longest_continuous_border(piece1, piece2, self.dist_tol)
         return len(idxs) > self.min_border_length
-
-
-class ComplexityNeighborClassifier(NeighborClassifierBase):
-    def __init__(self, dist_tol: float, min_complexity: float = 1) -> None:
-        super().__init__()
-        self.dist_tol = dist_tol
-        self.min_complexity = min_complexity
-
-    def __call__(self, piece1: TransformedPiece, piece2: TransformedPiece) -> bool:
-        return (
-            get_border_complexity(piece1, piece2, self.dist_tol) > self.min_complexity
-        )
-
-
-def get_curve_winding_angle(curve: Points) -> float:
-    """
-    Calculate the total angle of turn of a curve.
-
-    The total angle of turn of a curve is the sum of all the angles between
-    consecutive points in the curve, divided by 2 pi. The result is a float
-    between 0 and 1, where 0 means the curve is a straight line and 1 means
-    the curve makes a full turn.
-
-    Parameters
-    ----------
-    curve
-        The points of the curve.
-
-    Returns
-    -------
-    The total angle of turn of the curve.
-    """
-    curve_diff = curve[:-1] - curve[1:]
-
-    if len(curve_diff) == 0:
-        return 0
-
-    curve_angle = np.arctan2(curve_diff[:, 0], curve_diff[:, 1])
-    curve_angle = np.unwrap(curve_angle, discont=np.pi)
-    return (curve_angle.max() - curve_angle.min()) / (2 * np.pi)  # type: ignore
-
-
-def get_border_complexity(
-    piece1: TransformedPiece, piece2: TransformedPiece, border_dist_tol: float
-) -> float:
-    """
-    Calculate the complexity of a border between two pieces.
-
-    The complexity of a border is calculated as the product of the segment count
-    of the border and the winding angle of the border. The winding angle is
-    the total angle of turn of the curve, divided by 2 pi.
-
-    Parameters
-    ----------
-    piece1
-        The first piece.
-    piece2
-        The second piece.
-    border_dist_tol
-        The maximum distance between points in the two contours for them to be
-        considered as being on the same border.
-
-    Returns
-    -------
-    complexity
-        The complexity of the border.
-    """
-    idxs, piece = longest_continuous_border(piece1, piece2, border_dist_tol)
-
-    if len(idxs) == 0 or piece is None:
-        return 0
-
-    contour = smooth_contours(piece.contour[idxs], border_dist_tol * 2, False)
-    winding_angle = get_curve_winding_angle(contour)
-
-    return winding_angle  # type: ignore
 
 
 def longest_continuous_border(

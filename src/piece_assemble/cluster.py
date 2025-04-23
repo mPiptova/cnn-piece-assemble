@@ -18,14 +18,13 @@ from skimage.transform import rotate
 from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
 from piece_assemble.neighbors import (
     BorderLengthNeighborClassifier,
-    get_border_complexity,
 )
 from piece_assemble.piece import TransformedPiece
 from piece_assemble.visualization import draw_contour
 
 if TYPE_CHECKING:
 
-    from piece_assemble.models.embeddings import Embeddings
+    from piece_assemble.models.predict import Embeddings
     from piece_assemble.neighbors import NeighborClassifierBase
     from piece_assemble.types import NpImage, Points
 
@@ -67,39 +66,6 @@ class EmbeddingClusterScorer(ClusterScorerBase):
 
         cluster_score: float = score / (len(cluster.pieces) ** 0.5)
         return cluster_score
-
-
-class ClusterScorer(ClusterScorerBase):
-    def __init__(
-        self,
-        w_convexity: float,
-        w_complexity: float,
-        w_color_dist: float,
-        w_dist: float,
-        w_border_length: float,
-    ) -> None:
-        self.w_convexity = w_convexity
-        self.w_complexity = w_complexity
-        self.w_color_dist = w_color_dist
-        self.w_dist = w_dist
-        self.w_border_length = w_border_length
-
-    def __call__(self, cluster: Cluster) -> float:
-        convexity_score = cluster.convexity * self.w_convexity
-        complexity_score = (
-            cluster.complexity * cluster.avg_neighbor_count * self.w_complexity
-        )
-        color_score = (1 - cluster.color_dist * 100) * self.w_color_dist
-        dist_score = -cluster.dist * self.w_dist
-        border_length_score = cluster.rel_border_length * self.w_border_length
-        score: float = (
-            convexity_score
-            + complexity_score
-            + color_score
-            + dist_score
-            + border_length_score
-        )
-        return score * len(cluster.pieces)
 
 
 class MergeError(Exception):
@@ -647,15 +613,6 @@ class Cluster:
 
         return coords1, coords2
 
-    @cached_property
-    def complexity(self) -> float:
-        total_complexity = 0
-        for key1, key2 in combinations(self.piece_ids, 2):
-            total_complexity += get_border_complexity(
-                self.pieces[key1], self.pieces[key2], self.border_dist_tol
-            )
-
-        return total_complexity
 
     def get_match_color_dist(self, key1: str, key2: str) -> float:
         piece1 = self.pieces[key1]
@@ -835,7 +792,7 @@ class Cluster:
         cls,
         config: dict,
         pieces: dict,
-        scorer: ClusterScorer,
+        scorer: ClusterScorerBase,
         self_intersection_tol: float,
         border_dist_tol: float,
         rotation_tol: float,

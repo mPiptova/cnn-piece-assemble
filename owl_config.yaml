@@ -20,10 +20,6 @@ cluster:
 
 trusted_cluster:
   consistent_cycle_lengths: [3, 4]
-  use_trusted_clusters: False
-  complexity_threshold: 0.3
-  color_threshold: 0.005
-  dist_threshold: 0.8
 
 piece:
   polygon_approximation_tolerance: 3

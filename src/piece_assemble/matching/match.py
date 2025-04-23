@@ -12,7 +12,7 @@ from piece_assemble.geometry import Transformation, fit_transform, icp
 from piece_assemble.piece import TransformedPiece
 
 if TYPE_CHECKING:
-    from piece_assemble.cluster import ClusterScorer
+    from piece_assemble.cluster import ClusterScorerBase
     from piece_assemble.piece import Piece
 
 
@@ -153,7 +153,7 @@ class Match:
 
     def to_cluster(
         self,
-        scorer: ClusterScorer,
+        scorer: ClusterScorerBase,
         cluster_config: dict,
         pieces_dict: dict[str, Piece],
     ) -> Cluster:
