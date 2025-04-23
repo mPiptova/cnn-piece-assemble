@@ -20,16 +20,12 @@ class PairsDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         dataset_dir: str,
-        circular_padding: int = 4,
         seed: int = 42,
-        batch_size: int = 8,
         negative_ratio: float = 0.1,
         negative_form_same_puzzle_ratio: float = 0,
     ):
         super().__init__()
         self.dataset_dir = dataset_dir
-        self.circular_padding = circular_padding
-        self.batch_size = batch_size
         self.random = np.random.default_rng(seed)
 
         self.pieces_data_index = pd.read_csv(

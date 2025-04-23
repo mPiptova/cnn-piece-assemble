@@ -62,8 +62,6 @@ if __name__ == "__main__":
 
     val_dataset = PairsDataset(
         f"{config['train']['dataset']}/val",
-        model.padding,
-        batch_size=config["train"]["batch_size"],
         negative_ratio=config["train"]["negative_ratio"],
     )
     val_loader = torch.utils.data.DataLoader(
@@ -75,8 +73,6 @@ if __name__ == "__main__":
 
     dataset = PairsDataset(
         f"{config['train']['dataset']}/train",
-        model.padding,
-        batch_size=config["train"]["batch_size"],
         negative_ratio=config["train"]["negative_ratio"],
     )
     training_loader = torch.utils.data.DataLoader(

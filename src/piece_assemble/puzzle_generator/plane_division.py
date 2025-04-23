@@ -366,7 +366,7 @@ def apply_division_to_image(
             piece_img, mask, transformation
         )
 
-        piece = Piece.from_image(name, piece_img, mask, 0)
+        piece = Piece.from_image(name, piece_img, mask)
         transformed_piece = TransformedPiece(piece, transformation.inverse())
         pieces.append(transformed_piece)
 
