@@ -13,7 +13,7 @@ from piece_assemble.dataset import (
     preprocess_piece_data,
 )
 from piece_assemble.geometry import draw_line_polar
-from piece_assemble.matching.match import CandidateMatch, Match
+from piece_assemble.match import CandidateMatch, Match
 from piece_assemble.models import EmbeddingUnet, PairNetwork, load_model
 from piece_assemble.piece import Piece
 from piece_assemble.types import NpImage
@@ -187,6 +187,24 @@ def model_output_to_candidate_match(
     output: np.ndarray,
     threshold: float,
 ) -> CandidateMatch | None:
+    """Converts model output to a CandidateMatch object.
+
+    Parameters
+    ----------
+    piece1
+        The first piece.
+    piece2
+        The second piece.
+    output
+        The output of the model.
+    threshold
+        The threshold for the model output.
+
+    Returns
+    -------
+    CandidateMatch
+
+    """
     if output.max() < threshold:
         return None
 
@@ -209,6 +227,32 @@ def model_output_to_match(
     icp_min_change: dict | None = None,
     ios_tol: float | None = None,
 ) -> Match | None:
+    """Converts model output to a Match object.
+
+    Parameters
+    ----------
+    piece1
+        The first piece.
+    piece2
+        The second piece.
+    output
+        The output of the model.
+    threshold
+        The threshold for the model output.
+    dist_tol
+        The distance tolerance for the match.
+    icp_max_iters
+        The maximum number of iterations for the ICP algorithm.
+    icp_min_change
+        The minimum change for the ICP algorithm.
+    ios_tol
+        The tolerance for the IOS algorithm.
+
+    Returns
+    -------
+    Match
+        The match between the two pieces.
+    """
     match = model_output_to_candidate_match(piece1, piece2, output, threshold)
     if match is None:
         return None
@@ -282,6 +326,19 @@ def compute_piece_embeddings(
 def detect_strongest_line(
     img: NpImage, min_strength: int = 60
 ) -> tuple[float, float] | None:
+    """Detect the strongest diagonal line in given image.
+
+    Parameters
+    ----------
+    img
+        The model output.
+    min_strength
+        The minimum strength of the line.
+
+    Returns
+    -------
+    The distance and angle of the line (polar coordinates).
+    """
     tested_angles = np.linspace(np.pi / 6, np.pi / 3, 30, endpoint=False)
     h, theta, d = hough_line(img, theta=tested_angles)
 
@@ -293,6 +350,17 @@ def detect_strongest_line(
 
 
 def detect_lines(img: NpImage) -> tuple[np.ndarray, np.ndarray]:
+    """Detect the strongest diagonal line in the model output.
+
+    Parameters
+    ----------
+    img
+        The model output.
+
+    Returns
+    -------
+    The distance and angle of the line (polar coordinates).
+    """
     img_tiled = np.tile(img, (2, 2))
     line = detect_strongest_line(img_tiled)
     if line is None:
@@ -324,6 +392,19 @@ def detect_lines(img: NpImage) -> tuple[np.ndarray, np.ndarray]:
 def embeddings_to_similarity_matrix(
     embedding_first: np.ndarray, embedding_second: np.ndarray
 ) -> np.ndarray:
+    """Convert the embedding output to a similarity matrix.
+
+    Parameters
+    ----------
+    embeddings_first
+        Embeddings of the first piece
+    embeddings_second
+        Embeddings of the second piece
+
+    Returns
+    -------
+    The similarity matrix of two pieces.
+    """
     output = embedding_first.transpose(1, 0) @ embedding_second
     output = nn.functional.sigmoid(torch.from_numpy(output)).numpy()
     # Flip one of the axis so the indexes correspond to the original contour indexes

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from piece_assemble.geometry import get_common_contour_idxs
-from piece_assemble.utils import longest_continuous_subsequence
 
 if TYPE_CHECKING:
     from piece_assemble.piece import Piece, TransformedPiece
@@ -73,3 +72,15 @@ def longest_continuous_border(
     if len(idxs1) > len(idxs2):
         return idxs1, piece1
     return idxs2, piece2
+
+
+def longest_continuous_subsequence(sequence: np.array, max_diff: int = 2) -> np.array:
+    mask = (sequence[1:] - sequence[:-1] < max_diff).astype(int)
+    mask = np.pad(mask, (1, 1), "constant", constant_values=(0, 0))
+    diff = mask[1:] - mask[:-1]
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0]
+    if len(starts) == 0:
+        return np.array([])
+    idx_max = (ends - starts).argmax()
+    return sequence[starts[idx_max] : ends[idx_max]]

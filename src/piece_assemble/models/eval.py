@@ -16,6 +16,21 @@ if TYPE_CHECKING:
 
 
 def eval_assembly_potential(matches: list[Match], n_pieces: int) -> float:
+    """Evaluate what portion of image can be assembled using given matches.
+    
+    Connected component analysis is used.
+
+    Parameters
+    ----------
+    matches
+        A list of detected matches
+    n_pieces
+        Total number of pieces in successful assembly.
+
+    Returns
+    -------
+    A ratio of assembled matches.
+    """
     if len(matches) == 0:
         return 0
     graph = PyGraph()
@@ -35,6 +50,11 @@ def eval_assembly_potential(matches: list[Match], n_pieces: int) -> float:
 def get_relative_transformation(
     transformation1: Transformation, transformation2: Transformation
 ) -> Transformation:
+    """Get relative arrangement of two transformations
+     
+    Computes what transformation should be applied to `transformation2`
+    to get `transformation1`
+    """
     return transformation1.compose(transformation2.inverse())
 
 
@@ -72,6 +92,26 @@ def eval_puzzle(
     recall_only: bool = False,
     additional_metrics: Mapping[str, Metric] = {},
 ) -> dict:
+    """Evaluate the model on one puzzle.
+
+    Parameters
+    ----------
+    predictor
+    pieces
+        Ground truth pieces with their transformations.
+    neighbors 
+        Ground truth neighbors
+    recall_only
+        If True, only the correct subset of the piece pairs will be used 
+        for prediction.
+    additional_metrics
+
+    Returns
+    -------
+    Dictionary of computed metrics. By default contains: 
+    precision, recall, f1, missed, wrong, extra, tp, fp, fn, tn, accuracy, lcc, fa
+
+    """
 
     neighbors_set = set([tuple(sorted((x, y))) for x, y in neighbors])
 
@@ -161,6 +201,23 @@ def eval_puzzles(
     recall_only: bool = False,
     additional_metrics: dict[str, Metric] = {},
 ) -> dict[str, float]:
+    """Evaluate the model on multiple puzzles.
+
+    Parameters
+    ----------
+    predictor
+    puzzles
+    recall_only
+        If True, only the correct subset of the piece pairs will be used 
+        for prediction.
+    additional_metrics
+
+    Returns
+    -------
+    Dictionary of computed metrics. By default contains: 
+    precision, recall, f1, missed, wrong, extra, tp, fp, fn, tn, accuracy, lcc, fa
+
+    """
     aggr_metrics = {
         "precision": 0.0,
         "recall": 0.0,

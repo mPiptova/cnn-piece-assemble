@@ -1,3 +1,7 @@
+"""
+This module contains a representations of a match between two pieces.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

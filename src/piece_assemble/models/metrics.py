@@ -1,3 +1,5 @@
+"""This module contains definitions of various metrics used for evaluation."""
+
 from abc import abstractmethod
 
 import numpy as np
@@ -6,6 +8,7 @@ from piece_assemble.geometry import Transformation
 
 
 class Metric:
+    """Abstract metric"""
     @abstractmethod
     def __call__(
         self, pred: Transformation | None, gold: Transformation | None
@@ -14,9 +17,11 @@ class Metric:
 
 
 class RotationAngleError(Metric):
+    """Metric measuring the rotation error of transformation"""
     def __call__(
         self, pred: Transformation | None, gold: Transformation | None
     ) -> float | None:
+        """Compute rotation error between two transformations"""
         if pred is None or gold is None:
             return None
         diff = pred.rotation_angle - gold.rotation_angle
@@ -25,9 +30,11 @@ class RotationAngleError(Metric):
 
 
 class TranslationError(Metric):
+    """Metric measuring the translation error of transformation"""
     def __call__(
         self, pred: Transformation | None, gold: Transformation | None
     ) -> float | None:
+        """Compute translation error between two transformations"""
         if pred is None or gold is None:
             return None
         err: float = np.linalg.norm(pred.translation - gold.translation)
@@ -53,6 +60,7 @@ class TransformationError(Metric):
     def __call__(
         self, pred: Transformation | None, gold: Transformation | None
     ) -> float | None:
+        """Compute the error of transformation"""
         if pred is None or gold is None:
             return None
         if not self.correctness_classifier(pred, gold):

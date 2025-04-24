@@ -19,6 +19,7 @@ def get_correspondence_matrix(
     tol: int = 5,
     dilation_size: int = 3,
 ) -> np.ndarray:
+    """Get ground truth correspondence matrix of two pieces"""
     idxs1_closest, idxs2 = get_common_contour_idxs(
         t_piece1.contour,
         t_piece2.contour,
@@ -60,33 +61,10 @@ def get_correspondence_matrix(
     return similarity_matrix
 
 
-def contour_to_patches(contour: Points, window_size: int) -> list[np.ndarray]:
-    padding_size = window_size // 2
-
-    img_contour = np.ones((contour.max(axis=0) + 1), dtype="uint8")
-
-    img_contour = draw_contour(contour, img_contour, 0)
-    img_contour = np.pad(
-        img_contour,
-        ((padding_size, padding_size), (padding_size, padding_size)),
-        mode="constant",
-        constant_values=1,
-    )
-    img_contour = 1 - img_contour
-
-    patches = [
-        img_contour[
-            point[0] : point[0] + 2 * padding_size + 1,
-            point[1] : point[1] + 2 * padding_size + 1,
-        ]
-        for point in contour
-    ]
-    return patches
-
-
 def img_to_patches(
     contour: Points, img: np.ndarray, window_size: int
 ) -> list[np.ndarray]:
+    """Extract patches around contour points."""
     padding_size = window_size // 2
 
     padding = [(padding_size, padding_size), (padding_size, padding_size)]
