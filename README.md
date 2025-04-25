@@ -14,6 +14,7 @@ This repository includes:
 ## Table of Contents
 - [Installation and Requirements](#installation-and-requirements)
 - [Data](#data)
+- [Models](#models)
 - [Usage](#usage)
     - [Puzzle Generator](#puzzle-generator)
     - [Generating Training Dataset](#generating-training-dataset)
@@ -50,6 +51,30 @@ pip install -e .
 ```
 
 ## Data
+
+Synthetic datasets used for training and evaluation are available for download from [Google Drive](https://drive.google.com/drive/folders/1fows4Rd3V_5RoheIC9Tpe7UYMBIMYQAi?usp=sharing). The source images were obtained from the [National Gallery of Art](https://www.nga.gov/open-access-images.html).
+
+The directory contains two nearly identical datasets, each with an explicit train/validation/test split. The only difference between them is that in one version, erosion was applied to the puzzle pieces, while in the other, it was not.
+
+The distribution of number puzzles across the splits is shown in the table below:
+
+| Number of Pieces | Train   | Validation | Test   | Total   |
+| ---------------- | ------- | ---------- | ------ | ------- |
+| 10               | 0       | 0          | 30     | 30      |
+| 30               | 0       | 0          | 10     | 10      |
+| 50               | 377     | 67         | 10     | 454     |
+| 100              | 10      | 3          | 5      | 18      |
+| 200              | 5       | 1          | 0      | 6       |
+| 400              | 3       | 1          | 0      | 4       |
+| **Total**        | **395** | **72**     | **55** | **522** |
+
+## Models
+
+In this repository, two trained models are included, placed in `models` directory:
+
+- `UNet_20250213_180453`: Trained using non-augmented data
+- `UNet_20250114_085543`: Trained using eroded data
+
 
 ## Usage
 
@@ -201,8 +226,8 @@ Example structure of `data_index.csv`:
 ...
 ```
 
-    - The first column lists unique piece IDs.
-    - The second column indicates the file containing their input features.
+- The first column lists unique piece IDs.
+- The second column indicates the file containing their input features.
 
 
 Example structure of `neighbors_index.csv`:
@@ -214,8 +239,8 @@ Example structure of `neighbors_index.csv`:
 ...
 ```
 
-    - The first two columns define the IDs of neighboring pieces.
-    - The third column specifies the file where their similarity matrix is stored.
+- The first two columns define the IDs of neighboring pieces.
+- The third column specifies the file where their similarity matrix is stored.
 
 
 Training and validation datasets should be generated separately. The recommended directory structure is:
