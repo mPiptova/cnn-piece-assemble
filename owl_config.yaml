@@ -1,4 +1,4 @@
-img_path: "data/owl_101pcs_without_holes"
+img_path: "data/owl_100pcs"
 
 logging:
   output_images_path: "output/owl"
