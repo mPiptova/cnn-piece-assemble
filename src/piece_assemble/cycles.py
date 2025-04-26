@@ -6,7 +6,7 @@ import numpy as np
 
 from piece_assemble.cluster import Cluster, ClusterScorerBase
 from piece_assemble.geometry import Transformation
-from piece_assemble.matching.match import Match
+from piece_assemble.match import Match
 from piece_assemble.piece import Piece, TransformedPiece
 
 Graph = np.ndarray[bool]
