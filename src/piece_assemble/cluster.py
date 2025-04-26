@@ -7,18 +7,14 @@ from typing import TYPE_CHECKING
 
 import cv2 as cv
 import numpy as np
-from more_itertools import flatten
 from rustworkx import PyGraph, connected_components
-from scipy.ndimage import gaussian_filter1d
 from shapely import Polygon
 from shapely.ops import unary_union
 from skimage.morphology import disk, erosion
 from skimage.transform import rotate
 
 from piece_assemble.geometry import Transformation, get_common_contour_idxs, icp
-from piece_assemble.neighbors import (
-    BorderLengthNeighborClassifier,
-)
+from piece_assemble.neighbors import BorderLengthNeighborClassifier
 from piece_assemble.piece import TransformedPiece
 from piece_assemble.visualization import draw_contour
 
@@ -42,11 +38,24 @@ class DummyClusterScorer(ClusterScorerBase):
 
 
 class EmbeddingClusterScorer(ClusterScorerBase):
+    """Computes the score of a cluster based on the similarity of the contour embeddings
+
+    Weighted geometric mean of the embeddings
+    """
+
     def __init__(
         self,
         embeddings: Embeddings,
         length_weight: float = 0.2,
     ) -> None:
+        """
+        Parameters
+        ----------
+        embeddings
+            The embeddings to use for computing the score.
+        length_weight
+            The weight to give to the length of the contour.
+        """
         super().__init__()
         self.embeddings = embeddings
         self.length_weight = length_weight
@@ -91,6 +100,11 @@ class SelfIntersectionError(MergeError):
 
 
 class Cluster:
+    """Class representing a cluster of pieces.
+
+    Can be viewed as a partial puzzle solution.
+    """
+
     def __init__(
         self,
         pieces: dict[str, TransformedPiece],
@@ -102,6 +116,29 @@ class Cluster:
         neighbor_classifier: NeighborClassifierBase,
         parents: list[Cluster] | None = None,
     ) -> None:
+        """
+        Parameters
+        ----------
+        pieces
+            The pieces that make up the cluster, with their respective
+            transformations.
+        scorer
+            The scorer to use for computing the score of the cluster.
+        self_intersection_tol
+            The tolerance for self intersection of the pieces, relative
+            to their size.
+        border_dist_tol
+            The tolerance for piece borders to be considered as neighboring.
+        rotation_tol
+            The tolerance for rotation of the pieces
+        translation_tol
+            The tolerance for translation of the cluster.
+        neighbor_classifier
+            Defines how to determine if two pieces of the cluster are neighbors.
+        parents
+            Clusters from which this cluster was derived.
+        """
+
         self.pieces = pieces
         self.parents = parents
         self.scorer = scorer
@@ -113,23 +150,12 @@ class Cluster:
 
     @cached_property
     def score(self) -> float:
+        """Score of this cluster."""
         return self.scorer(self)
-
-    @cached_property
-    def border(self) -> Points:
-        border = []
-        for key1, key2 in self.matches_border_idxs.keys():
-            b1, b2 = self.get_match_border_coordinates(key1, key2)
-            if b1 is None:
-                continue
-            border.append((b1 + b2) / 2)
-
-        if len(border) == 0:
-            return []
-        return np.concatenate(border)
 
     @classmethod
     def get_default_config(cls) -> dict:
+        """Default configuration for a cluster."""
         cluster_config = {
             "border_dist_tol": 5,
             "self_intersection_tol": 0.01,
@@ -139,36 +165,13 @@ class Cluster:
         }
         return cluster_config
 
-    @cached_property
-    def rel_border_length(self) -> float:
-        return self.border_length / (
-            sum([len(piece.contour) for piece in self.pieces.values()])
-            - self.border_length
-        )
-
-    @cached_property
-    def border_length(self) -> int:
-        return len(self.border)
-
     @property
     def piece_ids(self) -> set[str]:
+        """Set of IDs of all pieces in the cluster."""
         return set(self.pieces.keys())
 
-    def copy(self) -> Cluster:
-        new_cluster = Cluster(
-            self.pieces.copy(),
-            self.scorer,
-            self.self_intersection_tol,
-            self.border_dist_tol,
-            self.rotation_tol,
-            self.translation_tol,
-            self.neighbor_classifier,
-            self.parents,
-        )
-        new_cluster.border_length = self.border_length
-        return new_cluster
-
     def transform(self, transformation: Transformation) -> Cluster:
+        """Apply a transformation to this cluster."""
         new_pieces = {
             key: piece.transform(transformation) for key, piece in self.pieces.items()
         }
@@ -182,26 +185,11 @@ class Cluster:
             self.neighbor_classifier,
             parents=[self],
         )
-        new_cluster.border_length = self.border_length
         return new_cluster
 
     @cached_property
-    def dist(self) -> float:
-        dists = []
-        for key1, key2 in combinations(self.piece_ids, 2):
-            b1, b2 = self.get_match_border_coordinates(key1, key2)
-            if b1 is None:
-                continue
-            dists.append(np.linalg.norm(b1 - b2, axis=1))
-
-        if len(dists) == 0:
-            return np.inf  # type: ignore
-
-        dists = np.concatenate(dists)
-        return np.mean(dists)  # type: ignore
-
-    @cached_property
     def self_intersection(self) -> float:
+        """ """
         polygons = self.transformed_polygons
         return max(  # type: ignore
             [
@@ -214,35 +202,11 @@ class Cluster:
     def transformed_polygons(self) -> list[Polygon]:
         return [piece.polygon for piece in self.pieces.values()]
 
-    def intersection(self, polygon: Polygon) -> float:
-        polygons = self.transformed_polygons
-        m: float = max(
-            [p.intersection(polygon).area / min(p.area, polygon.area) for p in polygons]
-        )
-        return m
-
     @cached_property
     def polygon_union(self) -> Polygon:
         polygons = self.transformed_polygons
         polygons = [polygon.buffer(1) for polygon in polygons]
         return unary_union(polygons)
-
-    @cached_property
-    def max_hole_area(self) -> float:
-        union = self.polygon_union
-
-        if union.geom_type == "Polygon":
-            polygons = [union]
-        else:
-            polygons = union.geoms
-        hole_areas = [
-            [Polygon(hole.coords).area for hole in polygon.interiors]
-            for polygon in polygons
-        ]
-        hole_areas = list(flatten(hole_areas))
-        if len(hole_areas) == 0:
-            return 0
-        return np.max(hole_areas)  # type: ignore
 
     def _fix_overlapping_pieces(self, pieces_to_keep: set[str]) -> Cluster:
         new_pieces = self.pieces.copy()
@@ -546,16 +510,6 @@ class Cluster:
         )
 
     @cached_property
-    def convexity(self) -> float:
-        union_polygon = self.polygon_union
-        return union_polygon.area / union_polygon.convex_hull.area  # type: ignore
-
-    def indicator(self, all_ids: list[str]) -> np.ndarray:
-        return np.array(
-            [True if piece_id in self.piece_ids else False for piece_id in all_ids]
-        )
-
-    @cached_property
     def matches_border_idxs(
         self,
     ) -> dict:
@@ -613,39 +567,6 @@ class Cluster:
 
         return coords1, coords2
 
-
-    def get_match_color_dist(self, key1: str, key2: str) -> float:
-        piece1 = self.pieces[key1]
-        piece2 = self.pieces[key2]
-
-        border_idxs1, border_idxs2 = self.get_match_border_idxs(key1, key2)
-        if border_idxs1 is None:
-            return -1
-
-        border1 = piece1.original_contour[border_idxs1].round().astype(int)
-        border2 = piece2.original_contour[border_idxs2].round().astype(int)
-
-        values1 = piece1.img_avg[border1[:, 0], border1[:, 1]]
-        values2 = piece2.img_avg[border2[:, 0], border2[:, 1]]
-
-        values1 = gaussian_filter1d(values1, 10, axis=0)
-        values2 = gaussian_filter1d(values2, 10, axis=0)
-
-        values_diff = np.abs(values1 - values2)
-        return np.mean(values_diff * values_diff)  # type: ignore
-
-    @cached_property
-    def color_dist(self) -> float:
-        dists = []
-        for key1, key2 in combinations(self.piece_ids, 2):
-            s = self.get_match_color_dist(key1, key2)
-            if s != -1:
-                dists.append(s)
-
-        if len(dists) == 0:
-            return 0.000001
-        return np.mean(dists)  # type: ignore
-
     @cached_property
     def neighbor_matrix(self) -> np.ndarray:
         piece_ids = list(self.piece_ids)
@@ -658,10 +579,6 @@ class Cluster:
                 matrix[i2, i1] = True
 
         return matrix
-
-    @cached_property
-    def avg_neighbor_count(self) -> float:
-        return np.sum(self.neighbor_matrix, axis=0).mean()  # type: ignore
 
     def draw(
         self,
