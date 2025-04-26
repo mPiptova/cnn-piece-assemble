@@ -123,7 +123,6 @@ def store_puzzle(
         0,
         0,
         BorderLengthNeighborClassifier(30, 5),
-        None,
     )
     with open(os.path.join(output_dir, "pieces.json"), "w") as f:
         json.dump(cluster.to_dict(), f, indent=4)

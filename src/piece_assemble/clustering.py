@@ -7,7 +7,6 @@ import shutil
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
-import numpy as np
 from skimage.transform import rescale
 from tqdm import tqdm
 
@@ -28,6 +27,14 @@ class Clustering:
         pieces: list[Piece],
         cluster_scorer: ClusterScorerBase,
     ) -> None:
+        """
+        Parameters
+        ----------
+        pieces
+            The pieces to assemble.
+        cluster_scorer
+            ClusterScorer which computes the score of the cluster.
+        """
         self.pieces = pieces
         self.cluster_scorer = cluster_scorer
         self.all_ids = [piece.name for piece in pieces]
@@ -38,11 +45,19 @@ class Clustering:
 
     @property
     def best_cluster(self) -> Cluster | None:
+        """Returns the best cluster."""
         if len(self.clusters) == 0:
             return None
         return self.clusters[0]  # type: ignore
 
     def reset(self, forget_found_matches: bool = False) -> None:
+        """Resets the state of the clustering.
+
+        Parameters
+        ----------
+        forget_found_matches
+            If True, forgets all found matches.
+        """
         self.clusters = []
         self.trusted_clusters = []
         self._i = 0
@@ -59,7 +74,17 @@ class Clustering:
         store_new_matches: bool = True,
         store_trusted_clusters: bool = False,
     ) -> None:
+        """Initializes parameters for logging.
 
+        Parameters
+        ----------
+        output_images_path
+            Path to store the output images.
+        store_new_matches
+            If True, stores the new matches.
+        store_trusted_clusters
+            If True, stores the trusted clusters.
+        """
         self._output_path = output_images_path
         self._store_new_matches = store_new_matches
         self._store_trusted_clusters = store_trusted_clusters
@@ -82,6 +107,25 @@ class Clustering:
         predictor: Predictor,
         patience: int = 10,
     ) -> list[Cluster]:
+        """Runs the clustering algorithm.
+
+        Parameters
+        ----------
+        n_iters
+            Number of iterations.
+        trusted_cluster_config
+            Configuration for trusted clusters.
+        cluster_config
+            Configuration for clusters.
+        icp_max_iters
+            Maximum number of iterations for the ICP algorithm.
+        icp_min_change
+            Minimum change for the ICP algorithm.
+        predictor
+            Predictor for matching pieces.
+        patience
+            Patience for early stopping.
+        """
         self.cluster_config = cluster_config
 
         self.predictor = predictor
@@ -186,6 +230,21 @@ class Clustering:
         icp_min_change: float,
         patience: int = 20,
     ) -> None:
+        """Runs the clustering algorithm.
+
+        Parameters
+        ----------
+        n_iters
+            Number of iterations.
+        trusted_cluster_config
+            Configuration for trusted clusters.
+        icp_max_iters
+            Maximum number of iterations for the ICP algorithm.
+        icp_min_change
+            Minimum change for the ICP algorithm.
+        patience
+            Patience for early stopping.
+        """
         self._generate_matches(icp_max_iters, icp_min_change)
         clusters_queue = self.all_pair_clusters.copy()
 
@@ -231,6 +290,15 @@ class Clustering:
     def get_cycles(
         self, pair_clusters: list[Cluster], tested_lengths: list[int]
     ) -> list[Cluster]:
+        """Find consistent cycles in the given pair clusters.
+
+        Parameters
+        ----------
+        pair_clusters
+            The pair clusters to find cycles in.
+        tested_lengths
+            The lengths of the cycles to find.
+        """
         graph = TransformationGraph.from_pair_clusters(pair_clusters)
         cycles = []
         for length in tested_lengths:
@@ -254,6 +322,15 @@ class Clustering:
         i: int,
         matches_queue: list,
     ) -> None:
+        """Runs one iteration of the clustering algorithm.
+
+        Parameters
+        ----------
+        i
+            The iteration number.
+        matches_queue
+            The queue of used pair clusters.
+        """
         new_cluster = self.get_new_pair_cluster(matches_queue)
 
         if new_cluster is None:
@@ -291,6 +368,7 @@ class Clustering:
         self,
         cluster_queue: list[Cluster],
     ) -> Cluster | None:
+        """Find next usable cluster from the queue."""
         while len(cluster_queue) > 0:
             new_cluster = cluster_queue.pop(0)
 
@@ -377,6 +455,7 @@ class Clustering:
     def use_new_match(
         self, clusters: list[Cluster], new_cluster: Cluster
     ) -> list[Cluster]:
+        """Incorporate new match into the clustering."""
         clusters = self.apply_trusted_clusters(clusters)
         clusters = self.cluster_selection(clusters)
 
@@ -392,38 +471,6 @@ class Clustering:
 
         merged_clusters = self.apply_trusted_clusters(merged_clusters)
         return self.cluster_selection(clusters + merged_clusters)
-
-    def use_new_matches(
-        self,
-        clusters: list[Cluster],
-        pair_clusters: list[Cluster],
-        max_cluster_size: int | None = None,
-    ) -> list[Cluster]:
-        clusters = self.apply_trusted_clusters(clusters)
-        clusters = self.cluster_selection(clusters)
-        pair_clusters.sort(key=lambda cluster: cluster.score, reverse=True)
-        for c1 in pair_clusters:
-            clusters_dict = {
-                frozenset(cluster.piece_ids): cluster for cluster in clusters + [c1]
-            }
-
-            for c2 in clusters:
-                new_cluster = self.combine(
-                    c1, c2, max_cluster_size, randomize_order=False, finetune_iters=3
-                )
-                if new_cluster is None:
-                    continue
-                key = frozenset(new_cluster.piece_ids)
-                if key in clusters_dict.keys():
-                    if clusters_dict[key].score >= new_cluster.score:
-                        continue
-
-                clusters_dict[key] = new_cluster
-
-            clusters = list(clusters_dict.values())
-            clusters = self.apply_trusted_clusters(clusters)
-            clusters = self.cluster_selection(clusters)
-        return clusters
 
     def recombine_all(
         self, clusters: list[Cluster], max_cluster_size: int | None = None
@@ -469,7 +516,6 @@ class Clustering:
             new_clusters_dict = {
                 frozenset(cluster.piece_ids): cluster for cluster in clusters
             }
-            # self.random.shuffle(clusters)
 
             used_pieces = set()
             for i, c1 in enumerate(clusters[:-1]):
@@ -587,6 +633,7 @@ class Clustering:
     def update_trusted_clusters(
         self, clusters: list[Cluster], trust_function: Callable
     ) -> list[Cluster]:
+        """Update trusted clusters with new clusters."""
         other_clusters = []
         for cluster in clusters:
             used_trusted_clusters = []
@@ -631,45 +678,6 @@ class Clustering:
                 selected_clusters.append(cluster)
         return selected_clusters
 
-    def find_applicable_previous_clusters(
-        self, cluster: Cluster, max_count: int
-    ) -> list[Cluster]:
-        """
-        Finds the suitable previously find pair clusters for the given cluster.
-
-        Parameters
-        ----------
-        best_cluster
-            The best cluster.
-        max_count
-            The maximum number of clusters to return.
-
-        Returns
-        -------
-        list
-            A list of applicable previous clusters.
-        """
-
-        previous_cluster_list = []
-        cluster_pairs = cluster.get_neighbor_pairs()
-        for keys, c in self.used_pair_clusters.items():
-            if keys not in cluster_pairs:
-                if keys.issubset(cluster.piece_ids) and c.common_pieces_match(cluster):
-                    continue
-                previous_cluster_list.append(c)
-
-        previous_cluster_list = self._check_new_clusters(previous_cluster_list)
-        if len(previous_cluster_list) > 0:
-            previous_clusters = list(
-                np.random.choice(
-                    previous_cluster_list,
-                    min(max_count, len(previous_cluster_list)),
-                    replace=False,
-                )
-            )
-            return previous_clusters
-        return []
-
     def store_iteration(self, name: str, clusters: list[Cluster]) -> None:
         """
         Store the given clusters in the specified directory.
@@ -707,4 +715,3 @@ class Clustering:
             img.save(get_image_path(i, cluster))
             with open(get_json_path(i, cluster), "w") as f:
                 json.dump(cluster.to_dict(), f, indent=4)
-

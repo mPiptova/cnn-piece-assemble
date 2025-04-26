@@ -9,7 +9,6 @@ import cv2 as cv
 import numpy as np
 from rustworkx import PyGraph, connected_components
 from shapely import Polygon
-from shapely.ops import unary_union
 from skimage.morphology import disk, erosion
 from skimage.transform import rotate
 
@@ -114,7 +113,7 @@ class Cluster:
         rotation_tol: float,
         translation_tol: float,
         neighbor_classifier: NeighborClassifierBase,
-        parents: list[Cluster] | None = None,
+        # parents: list[Cluster] | None = None,
     ) -> None:
         """
         Parameters
@@ -135,12 +134,11 @@ class Cluster:
             The tolerance for translation of the cluster.
         neighbor_classifier
             Defines how to determine if two pieces of the cluster are neighbors.
-        parents
+
             Clusters from which this cluster was derived.
         """
 
         self.pieces = pieces
-        self.parents = parents
         self.scorer = scorer
         self.self_intersection_tol = self_intersection_tol
         self.border_dist_tol = border_dist_tol
@@ -183,13 +181,12 @@ class Cluster:
             self.rotation_tol,
             self.translation_tol,
             self.neighbor_classifier,
-            parents=[self],
         )
         return new_cluster
 
     @cached_property
     def self_intersection(self) -> float:
-        """ """
+        """Return the maximum intersection over smaller of two pieces in the cluster."""
         polygons = self.transformed_polygons
         return max(  # type: ignore
             [
@@ -200,15 +197,11 @@ class Cluster:
 
     @property
     def transformed_polygons(self) -> list[Polygon]:
+        """List of transformed polygons of all pieces in the cluster."""
         return [piece.polygon for piece in self.pieces.values()]
 
-    @cached_property
-    def polygon_union(self) -> Polygon:
-        polygons = self.transformed_polygons
-        polygons = [polygon.buffer(1) for polygon in polygons]
-        return unary_union(polygons)
-
     def _fix_overlapping_pieces(self, pieces_to_keep: set[str]) -> Cluster:
+        """Remove overlapping pieces from the cluster."""
         new_pieces = self.pieces.copy()
         self_intersection_tol = self.self_intersection_tol * (
             np.log2(len(new_pieces)) + 1
@@ -236,7 +229,6 @@ class Cluster:
             self.rotation_tol,
             self.translation_tol,
             self.neighbor_classifier,
-            parents=None,
         )
 
     def find_unifying_transform(
@@ -304,8 +296,6 @@ class Cluster:
         cluster1 = self.transform(t1)
         cluster2 = other.transform(t2)
 
-        parents = [cluster1, cluster2]
-
         common_keys = list(self.piece_ids.intersection(other.piece_ids))
         for key in common_keys:
             if not cluster1.pieces[key].transformation.is_close(
@@ -318,7 +308,6 @@ class Cluster:
                         f"Transformations {cluster1.pieces[key].transformation} and "
                         f"{cluster2.pieces[key].transformation} are not close."
                     )
-                parents = [cluster1]
                 was_fixed = True
                 cluster2.pieces.pop(key)
 
@@ -338,7 +327,6 @@ class Cluster:
             self.rotation_tol,
             self.translation_tol,
             self.neighbor_classifier,
-            parents,
         )
 
         if finetune_iters > 0:
@@ -356,7 +344,6 @@ class Cluster:
             was_fixed = True
 
             new_cluster = new_cluster._fix_overlapping_pieces(self.piece_ids)
-            new_cluster.parents = [cluster1]
 
         if was_fixed:
             # New cluster may be disconnected
@@ -374,7 +361,6 @@ class Cluster:
                     self.rotation_tol,
                     self.translation_tol,
                     self.neighbor_classifier,
-                    parents=None,
                 )
 
         return new_cluster
@@ -451,7 +437,6 @@ class Cluster:
             self.rotation_tol,
             self.translation_tol,
             self.neighbor_classifier,
-            [self, other],
         )
 
         if new_cluster.self_intersection > self.self_intersection_tol:
@@ -506,7 +491,6 @@ class Cluster:
             self.rotation_tol,
             self.translation_tol,
             self.neighbor_classifier,
-            self.parents,
         )
 
     @cached_property
@@ -514,15 +498,6 @@ class Cluster:
         self,
     ) -> dict:
         matches_border_dict = {}
-
-        if self.parents is not None:
-            for parent in self.parents:
-                parent_dict = {
-                    keys: value
-                    for keys, value in parent.matches_border_idxs
-                    if set(keys).issubset(self.piece_ids)
-                }
-                matches_border_dict.update(parent_dict)
 
         for key1, key2 in combinations(self.piece_ids, 2):
             key1, key2 = min(key1, key2), max(key1, key2)
@@ -557,7 +532,22 @@ class Cluster:
 
     def get_match_border_coordinates(
         self, key1: str, key2: str
-    ) -> tuple[np.ndarray | None, np.ndarray | None]:
+    ) -> tuple[Points, Points] | tuple[None, None]:
+        """Return the coordinates of the common border between two pieces.
+
+        Parameters
+        ----------
+        key1
+            ID of the first piece.
+        key2
+            ID of the second piece.
+
+        Returns
+        -------
+        Either `(None, None)` if the pices do not share a common border,
+        or `(coords1, coords2)`, where `coords1[i]` are the coordinates of the
+        point of piece `key1` which matches the point `coords2[i]` of piece `key2`.
+        """
         idxs1, idxs2 = self.get_match_border_idxs(key1, key2)
         if idxs1 is None:
             return None, None
@@ -569,6 +559,7 @@ class Cluster:
 
     @cached_property
     def neighbor_matrix(self) -> np.ndarray:
+        """Adjacency matrix of the cluster."""
         piece_ids = list(self.piece_ids)
         matrix = np.full([len(self.pieces)] * 2, False)
         for i1, i2 in combinations(range(len(piece_ids)), 2):
@@ -586,6 +577,21 @@ class Cluster:
         draw_borders: bool = False,
         thickness: int = 1,
     ) -> np.ndarray:
+        """Draw the image of the cluster.
+
+        Parameters
+        ----------
+        draw_contours
+            Whether to draw the contours of the pieces.
+        draw_borders
+            Whether to highlight the common borders between the pieces.
+        thickness
+            Thickness of the lines.
+
+        Returns
+        -------
+        The image of the cluster.
+        """
         min_row, min_col, max_row, max_col = np.inf, np.inf, -np.inf, -np.inf
 
         piece_imgs = []
@@ -676,6 +682,9 @@ class Cluster:
 
     @cached_property
     def graph(self) -> PyGraph:
+        """Graph representation of the cluster.
+
+        Nodes are piece IDs, edges are between pieces that are neighbors."""
         graph = PyGraph()
         graph.add_nodes_from(list(self.piece_ids))
         edges = np.where(self.neighbor_matrix)
@@ -683,6 +692,7 @@ class Cluster:
         return graph
 
     def get_neighbor_pairs(self) -> set[frozenset[str]]:
+        """Return all neighbor pairs in the cluster."""
         neighbor_pairs = set()
         for i, key1 in enumerate(self.piece_ids):
             for j, key2 in enumerate(self.piece_ids):
@@ -716,6 +726,27 @@ class Cluster:
         translation_tol: float,
         neighbor_classifier: NeighborClassifierBase,
     ) -> Cluster:
+        """Create a cluster from a dictionary representation.
+
+        Parameters
+        ----------
+        config
+            Dictionary representation of the cluster.
+        pieces
+            Dictionary mapping piece IDs to piece images.
+        scorer
+            Scorer to use for evaluating clusters.
+        self_intersection_tol
+            Tolerance for self-intersections in the cluster.
+        border_dist_tol
+            Tolerance for piece borders to be considered as neighbors.
+        rotation_tol
+            Tolerance for rotation of the pieces.
+        translation_tol
+            Tolerance for translation of the pieces.
+        neighbor_classifier
+            Defines how to determine if two pieces of the cluster are neighbors.
+        """
         transformed_pieces = {
             p["id"]: TransformedPiece(
                 pieces[p["id"]], Transformation.from_dict(p["transformation"])
