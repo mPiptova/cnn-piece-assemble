@@ -353,7 +353,7 @@ The configuration file should have structure as follows (with recommended defaul
 The model can be evaluated using the script `src/piece_assemble/tools/eval_model.py`
 
 ```bash
-python eval.py [-h] dataset_path puzzles_path activation_threshold models_path MODEL [MODEL ...]
+python eval_model.py [-h] dataset_path puzzles_path activation_threshold models_path MODEL [MODEL ...]
 ```
 
 - `dataset_path`: Path to the directory where the puzzles are stored
@@ -363,6 +363,17 @@ python eval.py [-h] dataset_path puzzles_path activation_threshold models_path M
 - `MODEL`: ID of the model to evaluate. Arbitrary number of models can be specified.
 
 This script prints a table of results, formatted as a CSV file.
+
+#### Example
+If you want to evaluate a model on all test puzzles with 10 pieces from our dataset (see [Data](#data)), run
+
+```bash
+ls data/synth_artworks/test/ | grep ^10_ > test_10.txt
+# evaluate on non-augmented dataset
+python src/piece_assemble/tools/eval_model.py data/synth_artworks/test test_10.txt 0.7 models UNet_20250213_180453
+# evaluate on eroded dataset
+python src/piece_assemble/tools/eval_model.py data/synth_artworks_eroded/test test_10.txt 0.7 models UNet_20250213_180453
+```
 
 ### Running Assembly
 Images must be preprocessed beforehand.
@@ -395,6 +406,18 @@ python src/piece_assemble/tools/eval_assembly.py [-h] config puzzles_path datase
 
 - `config`: configuration file with the same structure as the configuration file used for assembly. Only `img_path` param gets overridden for each puzzle that is being tested, as well as `n_iters` which is always set to 1.5 times the number of pieces.
 - `puzzles_path` and `dataset_path` as in [Evaluating the Model](#evaluating-the-model)
+
+#### Example
+If you want to evaluate a model on all test puzzles with 10 pieces from our dataset (see [Data](#data)), run
+
+```bash
+ls data/synth_artworks/test/ | grep ^10_ > test_10.txt
+# evaluate on non-augmented dataset
+python src/piece_assemble/tools/eval_assembly.py sample_config.yaml test_10.txt data/synth_artworks/test
+python src/piece_assemble/tools/eval_assembly.py sample_config.yaml test_10.txt data/synth_artworks_eroded/test
+# evaluate on eroded dataset
+```
+
 
 ## Project Structure
 - `src/piece_assemble/` - Main codebase (model, dataset, generator, tools).
