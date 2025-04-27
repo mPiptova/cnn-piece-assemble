@@ -1,9 +1,9 @@
 # Path to image directory. Images already needs to be preprocessed.
-img_path: "data/owl_101pcs"
+img_path: "data/owl_100pcs"
 
 # Logging settings, optional.
 logging:
-  output_images_path: "./output/puzzle"
+  output_images_path: "./output/"
   store_new_matches: True
   store_trusted_clusters: True
 
@@ -19,7 +19,7 @@ piece:
   # Smaller values mean more precise approximation, but large number of points
   polygon_approximation_tolerance: 3
   # Scale of the images. Smaller scale means faster but less precise computation.
-  scale: 0.5
+  scale: 1
 
 cluster:
   border_dist_tol: 4
@@ -31,10 +31,6 @@ cluster:
 
 trusted_cluster:
   consistent_cycle_lengths: [3, 4]
-  use_trusted_clusters: True
-  complexity_threshold: 4
-  color_threshold: 0.01
-  dist_threshold: 1.15
 
 clustering:
   n_iters: 20
