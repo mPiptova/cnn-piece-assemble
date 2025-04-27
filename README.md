@@ -414,8 +414,8 @@ If you want to evaluate a model on all test puzzles with 10 pieces from our data
 ls data/synth_artworks/test/ | grep ^10_ > test_10.txt
 # evaluate on non-augmented dataset
 python src/piece_assemble/tools/eval_assembly.py sample_config.yaml test_10.txt data/synth_artworks/test
-python src/piece_assemble/tools/eval_assembly.py sample_config.yaml test_10.txt data/synth_artworks_eroded/test
 # evaluate on eroded dataset
+python src/piece_assemble/tools/eval_assembly.py sample_config.yaml test_10.txt data/synth_artworks_eroded/test
 ```
 
 
