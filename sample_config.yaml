@@ -3,15 +3,19 @@ img_path: "data/owl_100pcs"
 
 # Logging settings, optional.
 logging:
+  # Path to store the output images and cluster data
   output_images_path: "./output/"
   store_new_matches: True
   store_trusted_clusters: True
 
 # Model settings
 model:
+  # Model ID
   id: "UNet_20250114_085543"
+  # Model directory
   directory: "models"
-  activation_threshold: 0.8
+  # Activation threshold for the model output
+  activation_threshold: 0.6
 
 # Defines the parameters of the piece representation
 piece:
@@ -22,17 +26,28 @@ piece:
   scale: 1
 
 cluster:
+  # Tolerance for piece borders to be considered as neighbors
   border_dist_tol: 4
+  # Tolerance for self-intersections in the cluster, relative to the piece size
   self_intersection_tol: 0.02
+  # Tolerance for rotation of the pieces
   rotation_tol: 0.17
-  translation_tol: 30
-  match_length_weight: 0.2
+  # Tolerance for translation of the pieces
+  translation_tol: 25
+  # Weight for the length of the match in computing the score
+  match_length_weight: 0.4
+  # Minimum length of the match to be considered
   min_border_length: 30
 
 trusted_cluster:
+  # Our algorithm is trying to find transformation-consistent cycles in the found
+  # matches for faster assembly.
+  # For better performance, we can limit the lengths of the cycles we try to find.
   consistent_cycle_lengths: [3, 4]
 
 clustering:
+  # Number of iterations of the clustering algorithm
   n_iters: 20
+  # ICP settings
   icp_max_iters: 100
   icp_min_change: 0.3
