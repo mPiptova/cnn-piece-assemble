@@ -418,6 +418,12 @@ python src/piece_assemble/tools/eval_assembly.py sample_config.yaml test_10.txt 
 python src/piece_assemble/tools/eval_assembly.py sample_config.yaml test_10.txt data/synth_artworks_eroded/test
 ```
 
+### Visualizing Assembly Results
+
+The output clusters can be visualized using the notebook `src/piece_assemble/tools/display_cluster.ipynb`. It supports displaying both the ground truth assembly and the assembly produced by our method — the only requirement is to save the output of run_assembly.py as a JSON file.
+
+If the assembly is unsuccessful (i.e., incomplete), `run_assembly.py` typically outputs a list of clusters, where each cluster represents a partial solution. In that case, the output must be split into separate JSON files, as the notebook can visualize only one cluster at a time.
+
 
 ## Project Structure
 - `src/piece_assemble/` - Main codebase (model, dataset, generator, tools).
